@@ -9,7 +9,13 @@ final class Project {
     var repoPath: String = ""
     var branchName: String = ""
     var worktreePath: String?
+    var statusRaw: String = "in_progress"
     var deletedAt: Date?
+
+    var status: ProjectStatus {
+        get { ProjectStatus(rawValue: statusRaw) ?? .inProgress }
+        set { statusRaw = newValue.rawValue }
+    }
 
     init(
         name: String,
@@ -24,6 +30,19 @@ final class Project {
         self.repoPath = repoPath
         self.branchName = branchName
         self.worktreePath = worktreePath
+        self.statusRaw = ProjectStatus.inProgress.rawValue
         self.deletedAt = nil
+    }
+
+    enum ProjectStatus: String, CaseIterable {
+        case inProgress = "in_progress"
+        case archived = "archived"
+
+        var label: String {
+            switch self {
+            case .inProgress: "In Progress"
+            case .archived: "Archived"
+            }
+        }
     }
 }

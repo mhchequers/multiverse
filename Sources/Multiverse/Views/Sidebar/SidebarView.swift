@@ -9,27 +9,38 @@ struct SidebarView: View {
     var body: some View {
         @Bindable var state = appState
 
-        List(selection: $state.selectedProject) {
-            if !filteredProjects.isEmpty {
-                ForEach(filteredProjects) { project in
-                    ProjectRowView(project: project)
-                        .tag(project)
+        VStack(spacing: 0) {
+            Picker("Status", selection: $state.statusFilter) {
+                ForEach(Project.ProjectStatus.allCases, id: \.self) { status in
+                    Text(status.label).tag(status)
                 }
-            } else if !appState.searchText.isEmpty {
-                ContentUnavailableView.search(text: appState.searchText)
-            } else {
-                ContentUnavailableView(
-                    "No Projects",
-                    systemImage: "folder",
-                    description: Text("Press ⌘N to create your first project.")
-                )
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+
+            List(selection: $state.selectedProject) {
+                if !filteredProjects.isEmpty {
+                    ForEach(filteredProjects) { project in
+                        ProjectRowView(project: project)
+                            .tag(project)
+                    }
+                } else if !appState.searchText.isEmpty {
+                    ContentUnavailableView.search(text: appState.searchText)
+                } else {
+                    ContentUnavailableView(
+                        "No Projects",
+                        systemImage: "folder",
+                        description: Text("Press ⌘N to create your first project.")
+                    )
+                }
             }
         }
         .searchable(text: $state.searchText, placement: .sidebar, prompt: "Search projects...")
     }
 
     private var filteredProjects: [Project] {
-        let active = projects.filter { $0.deletedAt == nil }
+        let active = projects.filter { $0.deletedAt == nil && $0.status == appState.statusFilter }
         if appState.searchText.isEmpty { return active }
         let query = appState.searchText.lowercased()
         return active.filter {
