@@ -9,6 +9,7 @@ final class Project {
     var repoPath: String = ""
     var branchName: String = ""
     var worktreePath: String?
+    var notes: String = ""
     var statusRaw: String = "in_progress"
     var deletedAt: Date?
 

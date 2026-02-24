@@ -2,6 +2,7 @@ import SwiftUI
 
 enum DetailTab: String, CaseIterable {
     case description = "Description"
+    case notes = "Notes"
 }
 
 struct ProjectDetailView: View {
@@ -10,6 +11,8 @@ struct ProjectDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var showDeleteConfirmation = false
     @State private var selectedTab: DetailTab = .description
+    @State private var isEditing = false
+    @FocusState private var editorFocused: Bool
 
     private var statusColor: Color {
         switch project.status {
@@ -28,15 +31,67 @@ struct ProjectDetailView: View {
         return nil
     }
 
+    private func inlineMarkdown(_ source: String) -> AttributedString {
+        var options = AttributedString.MarkdownParsingOptions()
+        options.interpretedSyntax = .inlineOnlyPreservingWhitespace
+        return (try? AttributedString(markdown: source, options: options)) ?? AttributedString(source)
+    }
+
+    private func renderedMarkdown(_ source: String) -> AttributedString {
+        var result = AttributedString()
+        let lines = source.components(separatedBy: "\n")
+
+        for (index, line) in lines.enumerated() {
+            var attributed: AttributedString
+
+            if line.hasPrefix("###### ") {
+                attributed = inlineMarkdown(String(line.dropFirst(7)))
+                attributed.font = .system(.callout, weight: .bold)
+            } else if line.hasPrefix("##### ") {
+                attributed = inlineMarkdown(String(line.dropFirst(6)))
+                attributed.font = .system(.callout, weight: .bold)
+            } else if line.hasPrefix("#### ") {
+                attributed = inlineMarkdown(String(line.dropFirst(5)))
+                attributed.font = .system(.body, weight: .bold)
+            } else if line.hasPrefix("### ") {
+                attributed = inlineMarkdown(String(line.dropFirst(4)))
+                attributed.font = .system(.title3, weight: .semibold)
+            } else if line.hasPrefix("## ") {
+                attributed = inlineMarkdown(String(line.dropFirst(3)))
+                attributed.font = .system(.title2, weight: .semibold)
+            } else if line.hasPrefix("# ") {
+                attributed = inlineMarkdown(String(line.dropFirst(2)))
+                attributed.font = .system(.title, weight: .bold)
+            } else if line.hasPrefix("- ") || line.hasPrefix("* ") {
+                let content = String(line.dropFirst(2))
+                attributed = AttributedString("  \u{2022} ") + inlineMarkdown(content)
+            } else if let match = line.range(of: #"^(\d+)\. "#, options: .regularExpression) {
+                let number = line[line.startIndex..<line.index(before: match.upperBound)]
+                    .trimmingCharacters(in: .whitespaces.union(.punctuationCharacters))
+                let content = String(line[match.upperBound...])
+                attributed = AttributedString("  \(number). ") + inlineMarkdown(content)
+            } else {
+                attributed = inlineMarkdown(line)
+            }
+
+            result += attributed
+            if index < lines.count - 1 {
+                result += AttributedString("\n")
+            }
+        }
+
+        return result
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Header row
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(project.name)
-                        .font(.title2)
-                        .fontWeight(.bold)
+                Text(project.name)
+                    .font(.title)
+                    .fontWeight(.bold)
 
+                HStack {
                     Menu {
                         ForEach(Project.ProjectStatus.allCases, id: \.self) { status in
                             Button(status.label) {
@@ -60,8 +115,6 @@ struct ProjectDetailView: View {
                     }
                     .buttonStyle(.plain)
 
-                    Spacer()
-
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
@@ -77,6 +130,8 @@ struct ProjectDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Delete project")
+
+                    Spacer()
                 }
 
                 if let dir = terminalDirectory {
@@ -114,13 +169,30 @@ struct ProjectDetailView: View {
                         Button {
                             selectedTab = tab
                         } label: {
-                            Text(tab.rawValue)
-                                .font(.subheadline)
-                                .fontWeight(selectedTab == tab ? .semibold : .regular)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(selectedTab == tab ? Color.white.opacity(0.1) : Color.clear)
-                                .cornerRadius(6)
+                            HStack(spacing: 4) {
+                                Text(tab.rawValue)
+                                    .font(.headline)
+                                    .fontWeight(selectedTab == tab ? .semibold : .regular)
+
+                                if selectedTab == tab {
+                                    Button {
+                                        if isEditing {
+                                            try? modelContext.save()
+                                        }
+                                        isEditing.toggle()
+                                    } label: {
+                                        Image(systemName: isEditing ? "checkmark" : "pencil")
+                                            .font(.system(size: 9))
+                                            .foregroundStyle(isEditing ? Color.accentColor : .secondary)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help(isEditing ? "Done editing" : "Edit")
+                                }
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(selectedTab == tab ? Color.white.opacity(0.1) : Color.clear)
+                            .cornerRadius(6)
                         }
                         .buttonStyle(.plain)
                     }
@@ -134,16 +206,74 @@ struct ProjectDetailView: View {
                 // Tab content
                 switch selectedTab {
                 case .description:
-                    ScrollView {
-                        Text(project.projectDescription.isEmpty ? "No description." : project.projectDescription)
+                    if isEditing {
+                        TextEditor(text: $project.projectDescription)
                             .font(.body)
-                            .foregroundStyle(project.projectDescription.isEmpty ? .tertiary : .primary)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                            .padding()
+                            .scrollContentBackground(.hidden)
+                            .padding(8)
+                            .focused($editorFocused)
+                            .onAppear { editorFocused = true }
+                            .onChange(of: project.projectDescription) {
+                                try? modelContext.save()
+                            }
+                    } else {
+                        ScrollView {
+                            if project.projectDescription.isEmpty {
+                                Text("No description.")
+                                    .font(.body)
+                                    .foregroundStyle(.tertiary)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                    .padding()
+                            } else {
+                                Text(renderedMarkdown(project.projectDescription))
+                                    .font(.body)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                    .padding()
+                            }
+                        }
+                        .onTapGesture(count: 2) {
+                            isEditing = true
+                        }
+                    }
+                case .notes:
+                    if isEditing {
+                        TextEditor(text: $project.notes)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .padding(8)
+                            .focused($editorFocused)
+                            .onAppear { editorFocused = true }
+                            .onChange(of: project.notes) {
+                                try? modelContext.save()
+                            }
+                    } else {
+                        ScrollView {
+                            if project.notes.isEmpty {
+                                Text("No notes yet.")
+                                    .font(.body)
+                                    .foregroundStyle(.tertiary)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                    .padding()
+                            } else {
+                                Text(renderedMarkdown(project.notes))
+                                    .font(.body)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                    .padding()
+                            }
+                        }
+                        .onTapGesture(count: 2) {
+                            isEditing = true
+                        }
                     }
                 }
             }
             .frame(maxHeight: .infinity)
+            .onChange(of: editorFocused) {
+                if !editorFocused && isEditing {
+                    try? modelContext.save()
+                    isEditing = false
+                }
+            }
 
             Divider()
 
