@@ -32,6 +32,9 @@ struct MultiverseApp: App {
                         window.setFrame(frame, display: true, animate: false)
                     }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    appState.terminateAllProcesses()
+                }
         }
         .modelContainer(for: [
             Project.self,
