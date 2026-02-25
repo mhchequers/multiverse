@@ -39,6 +39,11 @@ struct TerminalRepresentable: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> MonitoredTerminalView {
+        // Reuse cached terminal if available (restored from session cache)
+        if let existing = terminalView {
+            return existing
+        }
+
         let terminal = MonitoredTerminalView(frame: .zero)
 
         terminal.nativeForegroundColor = .white

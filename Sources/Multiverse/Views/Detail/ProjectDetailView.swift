@@ -226,6 +226,7 @@ struct ProjectDetailView: View {
                 Button("Delete", role: .destructive) {
                     let repoPath = project.repoPath
                     let worktreePath = project.worktreePath
+                    appState.markProjectDeleted(project.id.uuidString)
                     appState.selectedProject = nil
                     modelContext.delete(project)
                     try? modelContext.save()

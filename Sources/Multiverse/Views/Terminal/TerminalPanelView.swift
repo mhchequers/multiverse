@@ -1,6 +1,18 @@
 import SwiftUI
 import SwiftTerm
 
+struct TerminalTab: Identifiable {
+    let id: UUID
+    var label: String
+    var command: String?
+
+    init(id: UUID = UUID(), label: String, command: String? = nil) {
+        self.id = id
+        self.label = label
+        self.command = command
+    }
+}
+
 struct TerminalPanelView: View {
     let workingDirectory: String
     let projectId: String
@@ -8,12 +20,6 @@ struct TerminalPanelView: View {
     @State private var tabs: [TerminalTab] = []
     @State private var selectedTabId: UUID?
     @State private var terminalViews: [UUID: MonitoredTerminalView] = [:]
-
-    struct TerminalTab: Identifiable {
-        let id = UUID()
-        var label: String
-        var command: String?
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -84,20 +90,28 @@ struct TerminalPanelView: View {
             }
         }
         .onAppear {
-            if tabs.isEmpty {
-                addTab()
+            if let cached = appState.restoreTerminalSession(projectId: projectId),
+               cached.workingDirectory == workingDirectory {
+                tabs = cached.tabs
+                selectedTabId = cached.selectedTabId
+                terminalViews = cached.terminalViews
+            } else {
+                appState.clearTerminalSession(projectId: projectId)
+                if tabs.isEmpty {
+                    addTab()
+                }
             }
         }
         .onDisappear {
-            for (id, terminal) in terminalViews {
-                if terminal.isProcessRunning {
-                    terminal.terminateProcessGroup()
-                }
-                appState.unregisterTerminal(terminal)
-                _ = id
+            if !tabs.isEmpty {
+                appState.cacheTerminalSession(
+                    projectId: projectId,
+                    tabs: tabs,
+                    selectedTabId: selectedTabId,
+                    terminalViews: terminalViews,
+                    workingDirectory: workingDirectory
+                )
             }
-            terminalViews.removeAll()
-            tabs.removeAll()
         }
         .onReceive(NotificationCenter.default.publisher(for: .launchClaude)) { notification in
             guard let targetId = notification.userInfo?["projectId"] as? String,
