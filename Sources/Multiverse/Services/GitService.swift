@@ -72,6 +72,38 @@ final class GitService {
         }
     }
 
+    // MARK: - Status & Diff
+
+    func status(in directory: String) async throws -> [FileChange] {
+        let result = try await runner.git("status", "--porcelain=v1", in: directory)
+        guard result.succeeded else { throw GitError.commandFailed(result.stderr) }
+        return FileChange.parse(porcelainOutput: result.stdout)
+    }
+
+    func diff(for file: String, staged: Bool, in directory: String) async throws -> String {
+        let result: ProcessResult
+        if staged {
+            result = try await runner.git("diff", "--cached", "--no-color", "-U99999", "--", file, in: directory)
+        } else {
+            result = try await runner.git("diff", "--no-color", "-U99999", "--", file, in: directory)
+        }
+        guard result.succeeded else { throw GitError.commandFailed(result.stderr) }
+        return result.stdout
+    }
+
+    func showUntrackedFile(_ file: String, in directory: String) async throws -> String {
+        let fullPath = (directory as NSString).appendingPathComponent(file)
+        let result = try await runner.run("/bin/cat", arguments: [fullPath])
+        guard result.succeeded else { throw GitError.commandFailed(result.stderr) }
+        return result.stdout
+    }
+
+    func stagedFileContent(for file: String, in directory: String) async throws -> String {
+        let result = try await runner.git("show", ":\(file)", in: directory)
+        guard result.succeeded else { throw GitError.commandFailed(result.stderr) }
+        return result.stdout
+    }
+
     enum GitError: Error, LocalizedError {
         case commandFailed(String)
 
