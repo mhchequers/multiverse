@@ -106,3 +106,25 @@ struct DiffLine: Identifiable {
         case modified  // blue gutter — line that replaced an old line
     }
 }
+
+// MARK: - Side-by-side diff
+
+enum SideLineType {
+    case unchanged
+    case added
+    case removed
+    case modified
+    case spacer
+}
+
+struct SideLine {
+    let lineNumber: Int?
+    let content: String
+    let type: SideLineType
+}
+
+struct SideBySideLine: Identifiable {
+    let id = UUID()
+    let left: SideLine
+    let right: SideLine
+}

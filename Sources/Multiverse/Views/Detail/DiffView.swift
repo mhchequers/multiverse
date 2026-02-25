@@ -58,9 +58,61 @@ struct DiffView: View {
                         .frame(minWidth: geo.size.width, alignment: .leading)
                         .padding(.vertical, 4)
                     }
+                    .overlay(alignment: .trailing) {
+                        changeMarkerStrip(height: geo.size.height)
+                    }
                 }
             }
         }
+    }
+
+    private func changeMarkerStrip(height: CGFloat) -> some View {
+        let regions = changeRegions()
+        let total = CGFloat(lines.count)
+
+        return ZStack(alignment: .top) {
+            // Subtle track background
+            Rectangle()
+                .fill(.white.opacity(0.03))
+
+            ForEach(Array(regions.enumerated()), id: \.offset) { _, region in
+                let y = (CGFloat(region.startLine) / total) * height
+                let h = max(2, (CGFloat(region.lineCount) / total) * height)
+
+                Rectangle()
+                    .fill(region.color.opacity(0.8))
+                    .frame(height: h)
+                    .offset(y: y)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
+        }
+        .frame(width: 10)
+        .allowsHitTesting(false)
+    }
+
+    private struct ChangeRegion {
+        let startLine: Int
+        let lineCount: Int
+        let color: Color
+    }
+
+    private func changeRegions() -> [ChangeRegion] {
+        var regions: [ChangeRegion] = []
+        var i = 0
+        while i < lines.count {
+            let type = lines[i].type
+            if type != .unchanged {
+                let start = i
+                let color = gutterColor(for: type)
+                while i < lines.count && lines[i].type == type {
+                    i += 1
+                }
+                regions.append(ChangeRegion(startLine: start, lineCount: i - start, color: color))
+            } else {
+                i += 1
+            }
+        }
+        return regions
     }
 
     private func gutterColor(for type: DiffLine.LineType) -> Color {

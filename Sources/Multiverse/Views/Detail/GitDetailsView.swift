@@ -18,10 +18,19 @@ struct GitDetailsView: View {
                     fileListPanel(vm: vm)
                         .frame(minWidth: 200, idealWidth: 280, maxWidth: 400)
 
-                    DiffView(
-                        lines: vm.diffLines,
-                        filename: vm.selectedFile?.path ?? ""
-                    )
+                    Group {
+                        if vm.showSideBySide {
+                            SideBySideDiffView(
+                                lines: vm.sideBySideLines,
+                                filename: vm.selectedFile?.path ?? ""
+                            )
+                        } else {
+                            DiffView(
+                                lines: vm.diffLines,
+                                filename: vm.selectedFile?.path ?? ""
+                            )
+                        }
+                    }
                     .frame(minWidth: 300)
                 }
             } else {
@@ -111,38 +120,39 @@ struct GitDetailsView: View {
     }
 
     private func fileRow(_ file: FileChange, vm: GitDetailsViewModel) -> some View {
-        Button {
-            Task { await vm.selectFile(file) }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: file.status.icon)
-                    .foregroundStyle(file.status.color)
-                    .font(.system(size: 12))
+        HStack(spacing: 6) {
+            Image(systemName: file.status.icon)
+                .foregroundStyle(file.status.color)
+                .font(.system(size: 12))
 
-                Text(file.filename)
-                    .font(.system(.body, design: .monospaced))
+            Text(file.filename)
+                .font(.system(.body, design: .monospaced))
+                .lineLimit(1)
+
+            if !file.directory.isEmpty {
+                Text(file.directory)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
                     .lineLimit(1)
-
-                if !file.directory.isEmpty {
-                    Text(file.directory)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                Spacer()
-
-                Text(String(file.status.label.prefix(1)))
-                    .font(.system(.caption, design: .monospaced))
-                    .fontWeight(.bold)
-                    .foregroundStyle(file.status.color)
+                    .truncationMode(.middle)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .background(vm.selectedFile == file ? Color.accentColor.opacity(0.2) : Color.clear)
-            .contentShape(Rectangle())
+
+            Spacer()
+
+            Text(String(file.status.label.prefix(1)))
+                .font(.system(.caption, design: .monospaced))
+                .fontWeight(.bold)
+                .foregroundStyle(file.status.color)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        .background(vm.selectedFile == file ? Color.accentColor.opacity(0.2) : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            Task { await vm.doubleClickFile(file) }
+        }
+        .onTapGesture(count: 1) {
+            Task { await vm.selectFile(file) }
+        }
     }
 }
