@@ -17,6 +17,11 @@ struct MultiverseApp: App {
                     NSApp.setActivationPolicy(.regular)
                     NSApp.activate()
 
+                    if let resourceURL = Bundle.module.url(forResource: "multiverse", withExtension: "jpg"),
+                       let icon = NSImage(contentsOf: resourceURL) {
+                        NSApp.applicationIconImage = icon
+                    }
+
                     // Clear cached window frames and set size immediately
                     for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("NSWindow Frame") {
                         UserDefaults.standard.removeObject(forKey: key)

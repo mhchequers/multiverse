@@ -16,7 +16,8 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftTerm", package: "SwiftTerm"),
             ],
-            path: "Sources/Multiverse"
+            path: "Sources/Multiverse",
+            resources: [.process("Resources")]
         ),
     ]
 )
