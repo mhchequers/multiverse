@@ -34,11 +34,18 @@ struct ProjectRowView: View {
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
+                let repoPath = project.repoPath
+                let worktreePath = project.worktreePath
                 if appState.selectedProject?.id == project.id {
                     appState.selectedProject = nil
                 }
                 modelContext.delete(project)
                 try? modelContext.save()
+                if let worktreePath, !worktreePath.isEmpty, !repoPath.isEmpty {
+                    Task {
+                        try? await appState.gitService.removeWorktree(repoPath: repoPath, worktreePath: worktreePath)
+                    }
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {

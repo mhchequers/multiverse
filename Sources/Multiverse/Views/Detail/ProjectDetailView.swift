@@ -151,9 +151,16 @@ struct ProjectDetailView: View {
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
+                    let repoPath = project.repoPath
+                    let worktreePath = project.worktreePath
                     appState.selectedProject = nil
                     modelContext.delete(project)
                     try? modelContext.save()
+                    if let worktreePath, !worktreePath.isEmpty, !repoPath.isEmpty {
+                        Task {
+                            try? await appState.gitService.removeWorktree(repoPath: repoPath, worktreePath: worktreePath)
+                        }
+                    }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {

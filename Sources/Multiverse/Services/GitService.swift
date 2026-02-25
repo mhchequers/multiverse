@@ -68,6 +68,13 @@ final class GitService {
         return worktreePath
     }
 
+    func removeWorktree(repoPath: String, worktreePath: String) async throws {
+        let result = try await runner.git("worktree", "remove", "--force", worktreePath, in: repoPath)
+        if !result.succeeded {
+            _ = try? await runner.git("worktree", "prune", in: repoPath)
+        }
+    }
+
     enum GitError: Error, LocalizedError {
         case commandFailed(String)
 
