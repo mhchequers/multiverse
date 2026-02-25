@@ -1,9 +1,9 @@
 import SwiftUI
 
-struct GitDetailsView: View {
+struct GitChangesView: View {
     let project: Project
     @Environment(AppState.self) private var appState
-    @State private var viewModel: GitDetailsViewModel?
+    @State private var viewModel: GitChangesViewModel?
 
     private var workingDirectory: String? {
         if let wt = project.worktreePath, !wt.isEmpty { return wt }
@@ -44,7 +44,7 @@ struct GitDetailsView: View {
         }
         .onAppear {
             if let dir = workingDirectory {
-                let vm = GitDetailsViewModel(gitService: appState.gitService, directory: dir)
+                let vm = GitChangesViewModel(gitService: appState.gitService, directory: dir)
                 viewModel = vm
                 Task { await vm.refresh() }
             }
@@ -52,7 +52,7 @@ struct GitDetailsView: View {
     }
 
     @ViewBuilder
-    private func fileListPanel(vm: GitDetailsViewModel) -> some View {
+    private func fileListPanel(vm: GitChangesViewModel) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Changes")
@@ -119,7 +119,7 @@ struct GitDetailsView: View {
         .padding(.bottom, 4)
     }
 
-    private func fileRow(_ file: FileChange, vm: GitDetailsViewModel) -> some View {
+    private func fileRow(_ file: FileChange, vm: GitChangesViewModel) -> some View {
         HStack(spacing: 6) {
             Image(systemName: file.status.icon)
                 .foregroundStyle(file.status.color)

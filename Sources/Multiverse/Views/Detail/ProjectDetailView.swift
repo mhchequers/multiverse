@@ -4,7 +4,7 @@ enum DetailTab: String, CaseIterable {
     case description = "Description"
     case notes = "Notes"
     case codePlan = "Code Plan"
-    case gitDetails = "Git Details"
+    case gitChanges = "Git Changes"
     case timeline = "Timeline"
 }
 
@@ -257,7 +257,7 @@ struct ProjectDetailView: View {
                                     .font(.headline)
                                     .fontWeight(selectedTab == tab ? .semibold : .regular)
 
-                                if selectedTab == tab && tab != .timeline && tab != .gitDetails {
+                                if selectedTab == tab && tab != .timeline && tab != .gitChanges {
                                     Button {
                                         if isEditing {
                                             try? modelContext.save()
@@ -410,8 +410,8 @@ struct ProjectDetailView: View {
                             .padding(10)
                         }
                     }
-                case .gitDetails:
-                    GitDetailsView(project: project)
+                case .gitChanges:
+                    GitChangesView(project: project)
                 case .timeline:
                     TimelineView(project: project)
                 }

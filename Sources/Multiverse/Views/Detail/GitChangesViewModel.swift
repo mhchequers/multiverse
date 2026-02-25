@@ -2,7 +2,7 @@ import Foundation
 
 @Observable
 @MainActor
-final class GitDetailsViewModel {
+final class GitChangesViewModel {
     var fileChanges: [FileChange] = []
     var selectedFile: FileChange?
     var diffLines: [DiffLine] = []
