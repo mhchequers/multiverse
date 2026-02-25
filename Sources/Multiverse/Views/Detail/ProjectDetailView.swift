@@ -13,6 +13,7 @@ struct ProjectDetailView: View {
     @State private var selectedTab: DetailTab = .description
     @State private var isEditing = false
     @FocusState private var editorFocused: Bool
+    @State private var terminalHeight: CGFloat = 400
 
     private var statusColor: Color {
         switch project.status {
@@ -275,19 +276,37 @@ struct ProjectDetailView: View {
                 }
             }
 
-            Divider()
+            // Draggable divider
+            Rectangle()
+                .fill(Color.gray.opacity(0.3))
+                .frame(height: 4)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            let delta = -value.translation.height
+                            terminalHeight = max(100, min(600, terminalHeight + delta))
+                        }
+                )
+                .onHover { hovering in
+                    if hovering {
+                        NSCursor.resizeUpDown.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
 
             // Terminal panel
             if let dir = terminalDirectory {
                 TerminalPanelView(workingDirectory: dir)
-                    .frame(maxHeight: .infinity)
+                    .frame(height: terminalHeight)
             } else {
                 ContentUnavailableView(
                     "No Repository",
                     systemImage: "terminal",
                     description: Text("This project has no git repository configured.")
                 )
-                .frame(maxHeight: .infinity)
+                .frame(height: terminalHeight)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
