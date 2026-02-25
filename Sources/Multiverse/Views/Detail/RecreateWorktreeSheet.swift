@@ -65,7 +65,7 @@ struct RecreateWorktreeSheet: View {
             HStack {
                 Button("Cancel") {
                     project.status = .archived
-                    try? modelContext.save()
+                    logActivity(.statusChanged, detail: "Archived", for: project, in: modelContext)
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
@@ -117,7 +117,7 @@ struct RecreateWorktreeSheet: View {
                 baseBranch: baseBranch
             )
             project.worktreePath = worktreePath
-            try? modelContext.save()
+            logActivity(.worktreeCreated, detail: worktreePath, for: project, in: modelContext)
             dismiss()
         } catch {
             self.error = "Failed to recreate worktree: \(error.localizedDescription)"

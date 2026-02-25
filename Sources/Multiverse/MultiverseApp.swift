@@ -43,6 +43,7 @@ struct MultiverseApp: App {
         }
         .modelContainer(for: [
             Project.self,
+            ProjectActivity.self,
         ])
         .defaultSize(width: 1600, height: 975)
         .commands {

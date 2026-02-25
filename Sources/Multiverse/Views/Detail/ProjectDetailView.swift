@@ -4,6 +4,7 @@ enum DetailTab: String, CaseIterable {
     case description = "Description"
     case notes = "Notes"
     case codePlan = "Code Plan"
+    case timeline = "Timeline"
 }
 
 extension Notification.Name {
@@ -104,6 +105,8 @@ struct ProjectDetailView: View {
     }
 
     private func executeCodePlan() {
+        logActivity(.codePlanExecuted, for: project, in: modelContext)
+
         let escaped = project.codePlan.replacingOccurrences(of: "'", with: "'\\''")
         let command = "claude '\(escaped)' --model opus --permission-mode plan --allowed-tools 'Read,Glob,Grep,WebSearch,WebFetch,Task,Bash(git:*)'"
 
@@ -130,7 +133,7 @@ struct ProjectDetailView: View {
                         ForEach(Project.ProjectStatus.allCases, id: \.self) { status in
                             Button(status.label) {
                                 project.status = status
-                                try? modelContext.save()
+                                logActivity(.statusChanged, detail: status.label, for: project, in: modelContext)
                                 if status == .inProgress && !hasWorktree && !project.repoPath.isEmpty {
                                     showRecreateWorktree = true
                                 }
@@ -161,7 +164,7 @@ struct ProjectDetailView: View {
                             }
                             await MainActor.run {
                                 project.worktreePath = nil
-                                try? modelContext.save()
+                                logActivity(.worktreeCleared, for: project, in: modelContext)
                             }
                         }
                     } label: {
@@ -252,7 +255,7 @@ struct ProjectDetailView: View {
                                     .font(.headline)
                                     .fontWeight(selectedTab == tab ? .semibold : .regular)
 
-                                if selectedTab == tab {
+                                if selectedTab == tab && tab != .timeline {
                                     Button {
                                         if isEditing {
                                             try? modelContext.save()
@@ -373,7 +376,7 @@ struct ProjectDetailView: View {
                             Spacer()
                             Button {
                                 project.codePlan = codePlanTemplate
-                                try? modelContext.save()
+                                logActivity(.codePlanReset, for: project, in: modelContext)
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: "arrow.counterclockwise")
@@ -405,6 +408,8 @@ struct ProjectDetailView: View {
                             .padding(10)
                         }
                     }
+                case .timeline:
+                    TimelineView(project: project)
                 }
             }
             .frame(maxHeight: .infinity)
@@ -417,6 +422,14 @@ struct ProjectDetailView: View {
             .onChange(of: editorFocused) {
                 if !editorFocused && isEditing {
                     try? modelContext.save()
+                    switch selectedTab {
+                    case .description:
+                        logActivity(.descriptionEdited, for: project, in: modelContext)
+                    case .notes:
+                        logActivity(.notesEdited, for: project, in: modelContext)
+                    default:
+                        break
+                    }
                     isEditing = false
                 }
             }

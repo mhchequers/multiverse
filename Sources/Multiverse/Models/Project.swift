@@ -12,6 +12,8 @@ final class Project {
     var notes: String = ""
     var codePlan: String = ""
     var statusRaw: String = "in_progress"
+    @Relationship(deleteRule: .cascade, inverse: \ProjectActivity.project)
+    var activities: [ProjectActivity] = []
 
     var status: ProjectStatus {
         get { ProjectStatus(rawValue: statusRaw) ?? .inProgress }

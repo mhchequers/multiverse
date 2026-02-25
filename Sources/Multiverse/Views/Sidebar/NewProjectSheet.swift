@@ -170,6 +170,7 @@ struct NewProjectSheet: View {
             branchName: !repoPath.isEmpty ? trimmedBranch : ""
         )
         modelContext.insert(project)
+        logActivity(.projectCreated, for: project, in: modelContext)
 
         if !repoPath.isEmpty && !trimmedBranch.isEmpty {
             do {
@@ -179,6 +180,7 @@ struct NewProjectSheet: View {
                     baseBranch: baseBranch
                 )
                 project.worktreePath = worktreePath
+                logActivity(.worktreeCreated, detail: worktreePath, for: project, in: modelContext)
             } catch {
                 self.error = "Project created, but worktree failed: \(error.localizedDescription)"
                 isCreating = false
