@@ -3,8 +3,6 @@ import Foundation
 @Observable
 @MainActor
 final class GitService {
-    static let worktreeBase = NSHomeDirectory() + "/multiverse-worktrees"
-
     private let runner = ProcessRunner.shared
 
     struct BranchInfo: Identifiable, Hashable, Sendable {
@@ -32,14 +30,13 @@ final class GitService {
     // MARK: - Worktrees
 
     func createWorktree(repoPath: String, branchName: String, baseBranch: String) async throws -> String {
-        let repoName = URL(fileURLWithPath: repoPath).lastPathComponent
+        let repoURL = URL(fileURLWithPath: repoPath)
+        let repoName = repoURL.lastPathComponent
+        let parentDir = repoURL.deletingLastPathComponent().path
         let slug = SlugGenerator.generate(from: branchName)
-        let worktreePath = "\(Self.worktreeBase)/\(repoName)--\(slug)"
+        let worktreePath = "\(parentDir)/\(repoName)--\(slug)"
 
         let fm = FileManager.default
-        if !fm.fileExists(atPath: Self.worktreeBase) {
-            try fm.createDirectory(atPath: Self.worktreeBase, withIntermediateDirectories: true)
-        }
 
         // Clean up stale worktree directory from a previous failed attempt
         if fm.fileExists(atPath: worktreePath) {
