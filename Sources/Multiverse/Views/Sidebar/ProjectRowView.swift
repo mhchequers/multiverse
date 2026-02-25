@@ -34,10 +34,10 @@ struct ProjectRowView: View {
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                project.deletedAt = Date()
                 if appState.selectedProject?.id == project.id {
                     appState.selectedProject = nil
                 }
+                modelContext.delete(project)
                 try? modelContext.save()
             }
             Button("Cancel", role: .cancel) {}

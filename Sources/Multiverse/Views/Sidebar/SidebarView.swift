@@ -40,7 +40,7 @@ struct SidebarView: View {
     }
 
     private var filteredProjects: [Project] {
-        let active = projects.filter { $0.deletedAt == nil && $0.status == appState.statusFilter }
+        let active = projects.filter { $0.status == appState.statusFilter }
         if appState.searchText.isEmpty { return active }
         let query = appState.searchText.lowercased()
         return active.filter {

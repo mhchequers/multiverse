@@ -11,7 +11,6 @@ final class Project {
     var worktreePath: String?
     var notes: String = ""
     var statusRaw: String = "in_progress"
-    var deletedAt: Date?
 
     var status: ProjectStatus {
         get { ProjectStatus(rawValue: statusRaw) ?? .inProgress }
@@ -32,7 +31,6 @@ final class Project {
         self.branchName = branchName
         self.worktreePath = worktreePath
         self.statusRaw = ProjectStatus.inProgress.rawValue
-        self.deletedAt = nil
     }
 
     enum ProjectStatus: String, CaseIterable {

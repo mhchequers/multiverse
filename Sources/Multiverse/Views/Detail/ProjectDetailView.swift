@@ -151,8 +151,8 @@ struct ProjectDetailView: View {
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
-                    project.deletedAt = Date()
                     appState.selectedProject = nil
+                    modelContext.delete(project)
                     try? modelContext.save()
                 }
                 Button("Cancel", role: .cancel) {}
