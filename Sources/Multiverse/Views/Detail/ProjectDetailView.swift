@@ -10,6 +10,7 @@ struct ProjectDetailView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.modelContext) private var modelContext
     @State private var showDeleteConfirmation = false
+    @State private var showRecreateWorktree = false
     @State private var selectedTab: DetailTab = .description
     @State private var isEditing = false
     @FocusState private var editorFocused: Bool
@@ -20,6 +21,11 @@ struct ProjectDetailView: View {
         case .inProgress: .green.opacity(0.7)
         case .archived: .red.opacity(0.7)
         }
+    }
+
+    private var hasWorktree: Bool {
+        if let path = project.worktreePath, !path.isEmpty { return true }
+        return false
     }
 
     private var terminalDirectory: String? {
@@ -98,6 +104,9 @@ struct ProjectDetailView: View {
                             Button(status.label) {
                                 project.status = status
                                 try? modelContext.save()
+                                if status == .inProgress && !hasWorktree && !project.repoPath.isEmpty {
+                                    showRecreateWorktree = true
+                                }
                             }
                         }
                     } label: {
@@ -115,6 +124,33 @@ struct ProjectDetailView: View {
                         .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
+
+                    Button {
+                        let repoPath = project.repoPath
+                        let worktreePath = project.worktreePath
+                        Task {
+                            if let worktreePath, !worktreePath.isEmpty, !repoPath.isEmpty {
+                                try? await appState.gitService.removeWorktree(repoPath: repoPath, worktreePath: worktreePath)
+                            }
+                            await MainActor.run {
+                                project.worktreePath = nil
+                                try? modelContext.save()
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "folder.badge.minus")
+                            Text("Clear Worktree")
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.orange.opacity(hasWorktree && project.status == .archived ? 0.8 : 0.3))
+                        .foregroundStyle(.white)
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!hasWorktree || project.status != .archived)
+                    .help(project.status != .archived ? "Archive project first to clear worktree" : hasWorktree ? "Remove git worktree" : "Worktree already cleared")
 
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
@@ -135,12 +171,19 @@ struct ProjectDetailView: View {
                     Spacer()
                 }
 
-                if let dir = terminalDirectory {
-                    Text(dir)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                HStack(spacing: 8) {
+                    if let dir = terminalDirectory {
+                        Text(dir)
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    if project.status == .archived && !hasWorktree {
+                        Label("Worktree cleared", systemImage: "checkmark.circle")
+                            .font(.caption)
+                            .foregroundStyle(.green.opacity(0.8))
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -306,6 +349,7 @@ struct ProjectDetailView: View {
             // Terminal panel
             if let dir = terminalDirectory {
                 TerminalPanelView(workingDirectory: dir)
+                    .id(dir)
                     .frame(height: terminalHeight)
             } else {
                 ContentUnavailableView(
@@ -317,5 +361,9 @@ struct ProjectDetailView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .sheet(isPresented: $showRecreateWorktree) {
+            RecreateWorktreeSheet(project: project)
+                .environment(appState)
+        }
     }
 }
