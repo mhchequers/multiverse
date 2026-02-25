@@ -3,7 +3,20 @@ import SwiftUI
 enum DetailTab: String, CaseIterable {
     case description = "Description"
     case notes = "Notes"
+    case codePlan = "Code Plan"
 }
+
+extension Notification.Name {
+    static let launchClaude = Notification.Name("launchClaude")
+}
+
+private let codePlanTemplate = """
+# Code Plan
+
+
+## Other important instructions
+- Use subagents as you need
+"""
 
 struct ProjectDetailView: View {
     @Bindable var project: Project
@@ -88,6 +101,20 @@ struct ProjectDetailView: View {
         }
 
         return result
+    }
+
+    private func executeCodePlan() {
+        let escaped = project.codePlan.replacingOccurrences(of: "'", with: "'\\''")
+        let command = "claude '\(escaped)' --model opus --permission-mode plan --allowed-tools 'Read,Glob,Grep,WebSearch,WebFetch,Task,Bash(git:*)'"
+
+        NotificationCenter.default.post(
+            name: .launchClaude,
+            object: nil,
+            userInfo: [
+                "command": command,
+                "projectId": project.id.uuidString,
+            ]
+        )
     }
 
     var body: some View {
@@ -316,9 +343,77 @@ struct ProjectDetailView: View {
                             isEditing = true
                         }
                     }
+                case .codePlan:
+                    VStack(spacing: 0) {
+                        if isEditing {
+                            TextEditor(text: $project.codePlan)
+                                .font(.body)
+                                .scrollContentBackground(.hidden)
+                                .padding(8)
+                                .focused($editorFocused)
+                                .onAppear { editorFocused = true }
+                                .onChange(of: project.codePlan) {
+                                    try? modelContext.save()
+                                }
+                        } else {
+                            ScrollView {
+                                Text(renderedMarkdown(project.codePlan))
+                                    .font(.body)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                                    .padding()
+                            }
+                            .onTapGesture(count: 2) {
+                                isEditing = true
+                            }
+                        }
+
+                        Divider()
+
+                        HStack {
+                            Spacer()
+                            Button {
+                                project.codePlan = codePlanTemplate
+                                try? modelContext.save()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "arrow.counterclockwise")
+                                    Text("Reset Plan")
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Color.gray.opacity(0.3))
+                                .foregroundStyle(.white)
+                                .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                executeCodePlan()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "play.fill")
+                                    Text("Execute Plan")
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Color.accentColor)
+                                .foregroundStyle(.white)
+                                .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(project.codePlan.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || terminalDirectory == nil)
+                            .padding(10)
+                        }
+                    }
                 }
             }
             .frame(maxHeight: .infinity)
+            .onChange(of: selectedTab) {
+                if selectedTab == .codePlan && project.codePlan.isEmpty {
+                    project.codePlan = codePlanTemplate
+                    try? modelContext.save()
+                }
+            }
             .onChange(of: editorFocused) {
                 if !editorFocused && isEditing {
                     try? modelContext.save()
@@ -348,7 +443,7 @@ struct ProjectDetailView: View {
 
             // Terminal panel
             if let dir = terminalDirectory {
-                TerminalPanelView(workingDirectory: dir)
+                TerminalPanelView(workingDirectory: dir, projectId: project.id.uuidString)
                     .id(dir)
                     .frame(height: terminalHeight)
             } else {

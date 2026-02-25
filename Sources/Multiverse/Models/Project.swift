@@ -10,6 +10,7 @@ final class Project {
     var branchName: String = ""
     var worktreePath: String?
     var notes: String = ""
+    var codePlan: String = ""
     var statusRaw: String = "in_progress"
 
     var status: ProjectStatus {

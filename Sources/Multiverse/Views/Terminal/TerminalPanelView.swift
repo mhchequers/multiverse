@@ -3,6 +3,7 @@ import SwiftTerm
 
 struct TerminalPanelView: View {
     let workingDirectory: String
+    let projectId: String
     @Environment(AppState.self) private var appState
     @State private var tabs: [TerminalTab] = []
     @State private var selectedTabId: UUID?
@@ -11,6 +12,7 @@ struct TerminalPanelView: View {
     struct TerminalTab: Identifiable {
         let id = UUID()
         var label: String
+        var command: String?
     }
 
     var body: some View {
@@ -62,6 +64,7 @@ struct TerminalPanelView: View {
                 ForEach(tabs) { tab in
                     TerminalRepresentable(
                         workingDirectory: workingDirectory,
+                        initialCommand: tab.command,
                         terminalView: Binding(
                             get: { terminalViews[tab.id] },
                             set: { newValue in
@@ -96,12 +99,19 @@ struct TerminalPanelView: View {
             terminalViews.removeAll()
             tabs.removeAll()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .launchClaude)) { notification in
+            guard let targetId = notification.userInfo?["projectId"] as? String,
+                  targetId == projectId else { return }
+            let command = notification.userInfo?["command"] as? String
+            let label = notification.userInfo?["label"] as? String ?? "Claude"
+            addTab(label: label, command: command)
+        }
     }
 
-    private func addTab() {
+    private func addTab(label: String? = nil, command: String? = nil) {
         let number = tabs.count + 1
-        let label = number == 1 ? "zsh" : "zsh \(number)"
-        let tab = TerminalTab(label: label)
+        let tabLabel = label ?? (number == 1 ? "zsh" : "zsh \(number)")
+        let tab = TerminalTab(label: tabLabel, command: command)
         tabs.append(tab)
         selectedTabId = tab.id
     }
