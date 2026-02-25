@@ -17,7 +17,7 @@ struct MultiverseApp: App {
                     NSApp.setActivationPolicy(.regular)
                     NSApp.activate()
 
-                    if let resourceURL = Bundle.module.url(forResource: "multiverse", withExtension: "jpg"),
+                    if let resourceURL = Bundle.module.url(forResource: "multiverse", withExtension: "png"),
                        let icon = NSImage(contentsOf: resourceURL) {
                         NSApp.applicationIconImage = icon
                     }
