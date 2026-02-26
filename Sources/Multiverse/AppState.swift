@@ -9,6 +9,7 @@ final class AppState {
     var statusFilter: Project.ProjectStatus = .inProgress
 
     let gitService = GitService()
+    @ObservationIgnored lazy var commitWatcher = CommitWatcher(gitService: gitService)
 
     // MARK: - Terminal Lifecycle
 

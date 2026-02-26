@@ -125,6 +125,20 @@ final class GitService {
         return files.sorted()
     }
 
+    // MARK: - Commit Detection
+
+    func headCommitHash(in directory: String) async throws -> String {
+        let result = try await runner.git("rev-parse", "HEAD", in: directory)
+        guard result.succeeded else { throw GitError.commandFailed(result.stderr) }
+        return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func latestCommitMessage(in directory: String) async throws -> String {
+        let result = try await runner.git("log", "-1", "--format=%s", in: directory)
+        guard result.succeeded else { throw GitError.commandFailed(result.stderr) }
+        return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     enum GitError: Error, LocalizedError {
         case commandFailed(String)
 

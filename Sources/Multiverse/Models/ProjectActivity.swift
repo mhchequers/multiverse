@@ -31,6 +31,7 @@ final class ProjectActivity {
         case codePlanReset
         case worktreeCreated
         case worktreeCleared
+        case commitDetected
 
         var label: String {
             switch self {
@@ -42,6 +43,7 @@ final class ProjectActivity {
             case .codePlanReset: "Code plan reset"
             case .worktreeCreated: "Worktree created"
             case .worktreeCleared: "Worktree cleared"
+            case .commitDetected: "Commit"
             }
         }
 
@@ -55,6 +57,7 @@ final class ProjectActivity {
             case .codePlanReset: "arrow.counterclockwise"
             case .worktreeCreated: "folder.badge.plus"
             case .worktreeCleared: "folder.badge.minus"
+            case .commitDetected: "arrow.triangle.branch"
             }
         }
 
@@ -68,6 +71,7 @@ final class ProjectActivity {
             case .codePlanReset: .gray
             case .worktreeCreated: .green
             case .worktreeCleared: .orange
+            case .commitDetected: .cyan
             }
         }
     }

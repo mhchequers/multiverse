@@ -190,6 +190,14 @@ struct NewProjectSheet: View {
             }
         }
 
+        // Seed the commit hash so existing commits aren't logged as new activity
+        let directory = project.worktreePath ?? project.repoPath
+        if !directory.isEmpty {
+            if let hash = try? await appState.gitService.headCommitHash(in: directory) {
+                project.lastKnownCommitHash = hash
+            }
+        }
+
         try? modelContext.save()
         appState.selectedProject = project
         dismiss()

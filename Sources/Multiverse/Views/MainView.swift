@@ -3,6 +3,7 @@ import SwiftData
 
 struct MainView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         @Bindable var state = appState
@@ -43,6 +44,9 @@ struct MainView: View {
         }
         .sheet(isPresented: $state.isCreatingProject) {
             NewProjectSheet()
+        }
+        .task {
+            appState.commitWatcher.start(modelContext: modelContext)
         }
     }
 }

@@ -12,6 +12,7 @@ final class Project {
     var notes: String = ""
     var codePlan: String = ""
     var statusRaw: String = "in_progress"
+    var lastKnownCommitHash: String = ""
     @Relationship(deleteRule: .cascade, inverse: \ProjectActivity.project)
     var activities: [ProjectActivity] = []
 
