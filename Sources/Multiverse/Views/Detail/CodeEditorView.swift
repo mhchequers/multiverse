@@ -1,10 +1,64 @@
 import SwiftUI
 import AppKit
+import Highlighter
 
 struct CodeEditorView: NSViewRepresentable {
     @Binding var text: String
+    let filename: String
     let annotations: LineAnnotations
     let onSave: () -> Void
+
+    // Shared highlighter instance (expensive to create — loads JS engine)
+    private static let highlighter: Highlighter? = {
+        let h = Highlighter()
+        h?.setTheme("atom-one-dark")
+        return h
+    }()
+
+    private static func languageName(for filename: String) -> String? {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        switch ext {
+        case "py": return "python"
+        case "js": return "javascript"
+        case "ts": return "typescript"
+        case "jsx": return "jsx"
+        case "tsx": return "tsx"
+        case "sql": return "sql"
+        case "md": return "markdown"
+        case "yml", "yaml": return "yaml"
+        case "json": return "json"
+        case "html", "htm": return "html"
+        case "css": return "css"
+        case "swift": return "swift"
+        case "sh", "bash", "zsh": return "bash"
+        case "rb": return "ruby"
+        case "rs": return "rust"
+        case "go": return "go"
+        case "java": return "java"
+        case "toml": return "toml"
+        case "xml": return "xml"
+        case "jinja", "jinja2", "j2": return "django"
+        default: return nil
+        }
+    }
+
+    static func applyHighlighting(to textView: NSTextView, filename: String) {
+        guard let highlighter = Self.highlighter,
+              let language = languageName(for: filename),
+              let textStorage = textView.textStorage else { return }
+
+        let code = textView.string
+        guard let highlighted = highlighter.highlight(code, as: language) else { return }
+
+        let selectedRanges = textView.selectedRanges
+        textStorage.beginEditing()
+        textStorage.setAttributedString(highlighted)
+        // Restore monospaced font (highlighter may use its own)
+        let fullRange = NSRange(location: 0, length: textStorage.length)
+        textStorage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular), range: fullRange)
+        textStorage.endEditing()
+        textView.selectedRanges = selectedRanges
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(textBinding: $text)
@@ -24,7 +78,7 @@ struct CodeEditorView: NSViewRepresentable {
         textView.isEditable = true
         textView.isSelectable = true
         textView.allowsUndo = true
-        textView.isRichText = false
+        textView.isRichText = true
         textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
         textView.textColor = NSColor.textColor
         textView.backgroundColor = .clear
@@ -60,6 +114,10 @@ struct CodeEditorView: NSViewRepresentable {
         context.coordinator.scrollView = scrollView
         context.coordinator.gutterView = gutterView
         context.coordinator.markerView = markerView
+        context.coordinator.filename = filename
+
+        // Apply initial syntax highlighting
+        Self.applyHighlighting(to: textView, filename: filename)
 
         // Observe clip view frame changes so we recalculate text view width on resize
         scrollView.contentView.postsFrameChangedNotifications = true
@@ -82,6 +140,7 @@ struct CodeEditorView: NSViewRepresentable {
 
     func updateNSView(_ container: NSView, context: Context) {
         context.coordinator.textBinding = $text
+        context.coordinator.filename = filename
         guard let textView = context.coordinator.textView,
               let scrollView = context.coordinator.scrollView else { return }
 
@@ -89,6 +148,9 @@ struct CodeEditorView: NSViewRepresentable {
             let selectedRanges = textView.selectedRanges
             textView.string = text
             textView.selectedRanges = selectedRanges
+
+            // Apply syntax highlighting on external text change
+            Self.applyHighlighting(to: textView, filename: filename)
 
             // Defer frame adjustment and scroll reset until after AppKit completes layout
             DispatchQueue.main.async {
@@ -131,10 +193,12 @@ struct CodeEditorView: NSViewRepresentable {
 
     class Coordinator: NSObject, NSTextViewDelegate {
         var textBinding: Binding<String>
+        var filename: String = ""
         var textView: GutterTextView?
         var scrollView: NSScrollView?
         var gutterView: LineNumberGutterView?
         var markerView: ChangeMarkerOverlay?
+        var highlightTask: DispatchWorkItem?
 
         init(textBinding: Binding<String>) {
             self.textBinding = textBinding
@@ -143,6 +207,15 @@ struct CodeEditorView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             textBinding.wrappedValue = textView.string
+
+            // Debounced re-highlighting
+            highlightTask?.cancel()
+            let filename = self.filename
+            let task = DispatchWorkItem {
+                CodeEditorView.applyHighlighting(to: textView, filename: filename)
+            }
+            highlightTask = task
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: task)
         }
 
         @MainActor @objc func clipViewFrameChanged(_ notification: Notification) {

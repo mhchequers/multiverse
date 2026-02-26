@@ -175,6 +175,7 @@ struct FileExplorerView: View {
                             vm.contentDidChange()
                         }
                     ),
+                    filename: selected.name,
                     annotations: vm.annotations,
                     onSave: { vm.saveFile() }
                 )
