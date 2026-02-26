@@ -104,6 +104,27 @@ final class GitService {
         return result.stdout
     }
 
+    // MARK: - File Explorer
+
+    func listFiles(in directory: String) async throws -> [String] {
+        // Get tracked files
+        let tracked = try await runner.git("ls-files", in: directory)
+        guard tracked.succeeded else { throw GitError.commandFailed(tracked.stderr) }
+
+        // Get untracked files (respecting .gitignore)
+        let untracked = try await runner.git("ls-files", "--others", "--exclude-standard", in: directory)
+        guard untracked.succeeded else { throw GitError.commandFailed(untracked.stderr) }
+
+        var files: [String] = []
+        for line in tracked.stdout.split(separator: "\n", omittingEmptySubsequences: true) {
+            files.append(String(line))
+        }
+        for line in untracked.stdout.split(separator: "\n", omittingEmptySubsequences: true) {
+            files.append(String(line))
+        }
+        return files.sorted()
+    }
+
     enum GitError: Error, LocalizedError {
         case commandFailed(String)
 

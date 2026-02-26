@@ -54,9 +54,25 @@ actor ProcessRunner {
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
 
-            process.terminationHandler = { _ in
-                let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-                let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+            let group = DispatchGroup()
+            nonisolated(unsafe) var stdoutData = Data()
+            nonisolated(unsafe) var stderrData = Data()
+
+            group.enter()
+            DispatchQueue.global().async {
+                stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                group.leave()
+            }
+            group.enter()
+            DispatchQueue.global().async {
+                stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                group.leave()
+            }
+
+            group.enter()
+            process.terminationHandler = { _ in group.leave() }
+
+            group.notify(queue: .global()) {
                 let result = ProcessResult(
                     stdout: String(data: stdoutData, encoding: .utf8) ?? "",
                     stderr: String(data: stderrData, encoding: .utf8) ?? "",

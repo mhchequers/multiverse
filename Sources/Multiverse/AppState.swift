@@ -85,5 +85,19 @@ final class AppState {
     func markProjectDeleted(_ projectId: String) {
         deletedProjectIds.insert(projectId)
         clearTerminalSession(projectId: projectId)
+        fileExplorerCache.removeValue(forKey: projectId)
+    }
+
+    // MARK: - File Explorer Cache
+
+    private var fileExplorerCache: [String: FileExplorerViewModel] = [:]
+
+    func fileExplorerVM(for projectId: String) -> FileExplorerViewModel? {
+        fileExplorerCache[projectId]
+    }
+
+    func cacheFileExplorerVM(_ vm: FileExplorerViewModel, for projectId: String) {
+        guard !deletedProjectIds.contains(projectId) else { return }
+        fileExplorerCache[projectId] = vm
     }
 }
