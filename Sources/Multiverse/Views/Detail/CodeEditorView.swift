@@ -27,7 +27,7 @@ struct CodeEditorView: NSViewRepresentable {
         textView.isRichText = false
         textView.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
         textView.textColor = NSColor.textColor
-        textView.backgroundColor = NSColor.textBackgroundColor.withAlphaComponent(0.3)
+        textView.backgroundColor = .clear
         textView.autoresizingMask = [.height]
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = true
