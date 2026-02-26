@@ -49,6 +49,15 @@ struct GitChangesView: View {
                 Task { await vm.refresh() }
             }
         }
+        .onChange(of: project.id) {
+            if let dir = workingDirectory {
+                let vm = GitChangesViewModel(gitService: appState.gitService, directory: dir)
+                viewModel = vm
+                Task { await vm.refresh() }
+            } else {
+                viewModel = nil
+            }
+        }
     }
 
     @ViewBuilder
