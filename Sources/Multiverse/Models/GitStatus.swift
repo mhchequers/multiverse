@@ -99,6 +99,7 @@ struct DiffLine: Identifiable {
     let id = UUID()
     let content: String
     let type: LineType
+    var highlightedContent: AttributedString?
 
     enum LineType {
         case unchanged
@@ -121,6 +122,7 @@ struct SideLine {
     let lineNumber: Int?
     let content: String
     let type: SideLineType
+    var highlightedContent: AttributedString?
 }
 
 struct SideBySideLine: Identifiable {

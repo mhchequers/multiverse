@@ -78,6 +78,7 @@ final class GitChangesViewModel {
                     return DiffLine(content: String(line), type: type)
                 }
             }
+            applyHighlightingToDiffLines(filename: file.filename)
         } catch {
             diffLines = [DiffLine(content: "Error loading diff: \(error.localizedDescription)", type: .unchanged)]
         }
@@ -180,6 +181,7 @@ final class GitChangesViewModel {
                         right: SideLine(lineNumber: index + 1, content: String(line), type: .added)
                     )
                 }
+                applyHighlightingToSideBySide(filename: file.filename)
                 return
             } else if file.status == .deleted {
                 sideBySideLines = [SideBySideLine(
@@ -191,6 +193,7 @@ final class GitChangesViewModel {
 
             rawDiff = try await gitService.diff(for: file.path, staged: file.area == .staged, in: directory)
             sideBySideLines = buildSideBySide(from: rawDiff)
+            applyHighlightingToSideBySide(filename: file.filename)
         } catch {
             sideBySideLines = [SideBySideLine(
                 left: SideLine(lineNumber: nil, content: "Error: \(error.localizedDescription)", type: .unchanged),
@@ -307,5 +310,64 @@ final class GitChangesViewModel {
             numStr = String(afterPlus)
         }
         return Int(numStr)
+    }
+
+    // MARK: - Syntax highlighting
+
+    private func applyHighlightingToDiffLines(filename: String) {
+        let fullText = diffLines.map(\.content).joined(separator: "\n")
+        let highlighted = SyntaxHighlighter.highlightLines(fullText, filename: filename)
+        for i in diffLines.indices where i < highlighted.count {
+            diffLines[i].highlightedContent = highlighted[i]
+        }
+    }
+
+    private func applyHighlightingToSideBySide(filename: String) {
+        // Reconstruct left and right file text from non-spacer lines
+        var leftTexts: [String] = []
+        var leftIndices: [Int] = []
+        var rightTexts: [String] = []
+        var rightIndices: [Int] = []
+
+        for (i, line) in sideBySideLines.enumerated() {
+            if line.left.type != .spacer {
+                leftTexts.append(line.left.content)
+                leftIndices.append(i)
+            }
+            if line.right.type != .spacer {
+                rightTexts.append(line.right.content)
+                rightIndices.append(i)
+            }
+        }
+
+        let leftHighlighted = SyntaxHighlighter.highlightLines(
+            leftTexts.joined(separator: "\n"), filename: filename
+        )
+        let rightHighlighted = SyntaxHighlighter.highlightLines(
+            rightTexts.joined(separator: "\n"), filename: filename
+        )
+
+        for (idx, lineIndex) in leftIndices.enumerated() where idx < leftHighlighted.count {
+            sideBySideLines[lineIndex] = SideBySideLine(
+                left: SideLine(
+                    lineNumber: sideBySideLines[lineIndex].left.lineNumber,
+                    content: sideBySideLines[lineIndex].left.content,
+                    type: sideBySideLines[lineIndex].left.type,
+                    highlightedContent: leftHighlighted[idx]
+                ),
+                right: sideBySideLines[lineIndex].right
+            )
+        }
+        for (idx, lineIndex) in rightIndices.enumerated() where idx < rightHighlighted.count {
+            sideBySideLines[lineIndex] = SideBySideLine(
+                left: sideBySideLines[lineIndex].left,
+                right: SideLine(
+                    lineNumber: sideBySideLines[lineIndex].right.lineNumber,
+                    content: sideBySideLines[lineIndex].right.content,
+                    type: sideBySideLines[lineIndex].right.type,
+                    highlightedContent: rightHighlighted[idx]
+                )
+            )
+        }
     }
 }

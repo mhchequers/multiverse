@@ -46,9 +46,8 @@ struct DiffView: View {
                                         .padding(.trailing, 8)
 
                                     // File content
-                                    Text(line.content)
+                                    Text(line.highlightedContent ?? AttributedString(line.content))
                                         .font(.system(.body, design: .monospaced))
-                                        .foregroundStyle(.primary)
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
                                 }

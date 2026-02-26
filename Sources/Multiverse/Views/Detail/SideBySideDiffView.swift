@@ -244,9 +244,8 @@ struct SideBySideDiffView: View {
                     .padding(.trailing, 4)
 
                 // Content
-                Text(side.content)
+                Text(side.highlightedContent ?? AttributedString(side.content))
                     .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
