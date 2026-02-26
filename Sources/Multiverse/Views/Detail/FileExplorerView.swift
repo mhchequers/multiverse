@@ -99,6 +99,14 @@ struct FileExplorerView: View {
                     }
                 } label: {
                     fileLabel(node: node, vm: vm)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if vm.expandedDirectories.contains(node.id) {
+                                vm.expandedDirectories.remove(node.id)
+                            } else {
+                                vm.expandedDirectories.insert(node.id)
+                            }
+                        }
                 }
                 .padding(.leading, CGFloat(depth) * 12)
                 .padding(.horizontal, 8)
