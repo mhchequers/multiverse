@@ -267,6 +267,32 @@ class LineNumberGutterView: NSView {
                 barRect.fill()
             }
 
+            // Draw deletion triangle (red wedge at bottom edge of line where deletions occurred)
+            if annotations.deleted.contains(lineNumber) {
+                let triangleSize: CGFloat = 5
+                let triangleY = lineRect.origin.y + lineRect.height - 1
+                let triangleX = gutterWidth - 5
+                let path = NSBezierPath()
+                path.move(to: NSPoint(x: triangleX, y: triangleY))
+                path.line(to: NSPoint(x: triangleX + triangleSize, y: triangleY))
+                path.line(to: NSPoint(x: triangleX, y: triangleY - triangleSize))
+                path.close()
+                NSColor.systemRed.setFill()
+                path.fill()
+            } else if lineNumber == 1 && annotations.deleted.contains(0) {
+                // Deletion before line 1: draw triangle at top of first line
+                let triangleSize: CGFloat = 5
+                let triangleY = lineRect.origin.y + 1
+                let triangleX = gutterWidth - 5
+                let path = NSBezierPath()
+                path.move(to: NSPoint(x: triangleX, y: triangleY))
+                path.line(to: NSPoint(x: triangleX + triangleSize, y: triangleY))
+                path.line(to: NSPoint(x: triangleX, y: triangleY + triangleSize))
+                path.close()
+                NSColor.systemRed.setFill()
+                path.fill()
+            }
+
             // Draw line number
             let numStr = "\(lineNumber)" as NSString
             let size = numStr.size(withAttributes: attrs)
@@ -341,30 +367,40 @@ class ChangeMarkerOverlay: NSView {
         NSColor.white.withAlphaComponent(0.03).setFill()
         bounds.fill()
 
-        // Draw markers
+        // Draw markers for added/modified
         let allChanged = annotations.added.union(annotations.modified)
-        guard !allChanged.isEmpty else { return }
 
-        // Group consecutive lines into regions
-        let sorted = allChanged.sorted()
-        var regions: [(start: Int, count: Int, color: NSColor)] = []
-        var i = 0
-        while i < sorted.count {
-            let start = sorted[i]
-            let color = annotations.added.contains(start) ? NSColor.systemGreen : NSColor.systemBlue
-            var count = 1
-            while i + count < sorted.count && sorted[i + count] == start + count {
-                count += 1
+        if !allChanged.isEmpty {
+            // Group consecutive lines into regions
+            let sorted = allChanged.sorted()
+            var regions: [(start: Int, count: Int, color: NSColor)] = []
+            var i = 0
+            while i < sorted.count {
+                let start = sorted[i]
+                let color = annotations.added.contains(start) ? NSColor.systemGreen : NSColor.systemBlue
+                var count = 1
+                while i + count < sorted.count && sorted[i + count] == start + count {
+                    count += 1
+                }
+                regions.append((start, count, color))
+                i += count
             }
-            regions.append((start, count, color))
-            i += count
+
+            for region in regions {
+                let y = (CGFloat(region.start - 1) / CGFloat(totalLines)) * height
+                let h = max(2, (CGFloat(region.count) / CGFloat(totalLines)) * height)
+                let markerRect = NSRect(x: 0, y: y, width: bounds.width, height: h)
+                region.color.withAlphaComponent(0.8).setFill()
+                markerRect.fill()
+            }
         }
 
-        for region in regions {
-            let y = (CGFloat(region.start - 1) / CGFloat(totalLines)) * height
-            let h = max(2, (CGFloat(region.count) / CGFloat(totalLines)) * height)
-            let markerRect = NSRect(x: 0, y: y, width: bounds.width, height: h)
-            region.color.withAlphaComponent(0.8).setFill()
+        // Draw markers for deletions (small red dots)
+        for deletedLine in annotations.deleted {
+            let linePos = max(0, deletedLine)
+            let y = (CGFloat(linePos) / CGFloat(totalLines)) * height
+            let markerRect = NSRect(x: 1, y: y, width: bounds.width - 2, height: 2)
+            NSColor.systemRed.withAlphaComponent(0.8).setFill()
             markerRect.fill()
         }
     }

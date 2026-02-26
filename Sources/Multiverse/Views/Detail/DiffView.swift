@@ -30,10 +30,10 @@ struct DiffView: View {
                 GeometryReader { geo in
                     ScrollView([.horizontal, .vertical]) {
                         VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                                 HStack(spacing: 0) {
                                     // Line number
-                                    Text("\(index + 1)")
+                                    Text(line.lineNumber.map(String.init) ?? "")
                                         .font(.system(.caption, design: .monospaced))
                                         .foregroundStyle(.tertiary)
                                         .frame(width: 44, alignment: .trailing)
@@ -50,8 +50,10 @@ struct DiffView: View {
                                         .font(.system(.body, design: .monospaced))
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
+                                        .opacity(line.type == .deleted ? 0.6 : 1.0)
                                 }
                                 .padding(.vertical, 1)
+                                .background(lineBackground(for: line.type))
                             }
                         }
                         .frame(minWidth: geo.size.width, alignment: .leading)
@@ -118,7 +120,15 @@ struct DiffView: View {
         switch type {
         case .added: .green
         case .modified: .blue
+        case .deleted: .red
         case .unchanged: .clear
+        }
+    }
+
+    private func lineBackground(for type: DiffLine.LineType) -> Color {
+        switch type {
+        case .deleted: .red.opacity(0.1)
+        default: .clear
         }
     }
 }

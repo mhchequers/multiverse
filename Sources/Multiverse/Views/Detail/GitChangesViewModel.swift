@@ -49,119 +49,92 @@ final class GitChangesViewModel {
         do {
             if file.status == .untracked {
                 let content = try await gitService.showUntrackedFile(file.path, in: directory)
+                var lineNum = 1
                 diffLines = content.split(separator: "\n", omittingEmptySubsequences: false).map {
-                    DiffLine(content: String($0), type: .added)
+                    defer { lineNum += 1 }
+                    return DiffLine(content: String($0), type: .added, lineNumber: lineNum)
                 }
             } else if file.status == .deleted {
-                diffLines = [DiffLine(content: "(file deleted)", type: .unchanged)]
-            } else {
-                // Get the file content and the diff
-                let content: String
-                if file.area == .staged {
-                    content = try await gitService.stagedFileContent(for: file.path, in: directory)
-                } else {
-                    content = try await gitService.showUntrackedFile(file.path, in: directory)
-                }
                 let rawDiff = try await gitService.diff(for: file.path, staged: file.area == .staged, in: directory)
-                let annotations = parseAnnotations(from: rawDiff)
-                let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
-                diffLines = lines.enumerated().map { index, line in
-                    let lineNum = index + 1
-                    let type: DiffLine.LineType
-                    if annotations.modified.contains(lineNum) {
-                        type = .modified
-                    } else if annotations.added.contains(lineNum) {
-                        type = .added
-                    } else {
-                        type = .unchanged
-                    }
-                    return DiffLine(content: String(line), type: type)
+                diffLines = buildDiffLines(from: rawDiff)
+                if diffLines.isEmpty {
+                    diffLines = [DiffLine(content: "(file deleted)", type: .deleted, lineNumber: nil)]
                 }
+            } else {
+                let rawDiff = try await gitService.diff(for: file.path, staged: file.area == .staged, in: directory)
+                diffLines = buildDiffLines(from: rawDiff)
             }
             applyHighlightingToDiffLines(filename: file.filename)
         } catch {
-            diffLines = [DiffLine(content: "Error loading diff: \(error.localizedDescription)", type: .unchanged)]
+            diffLines = [DiffLine(content: "Error loading diff: \(error.localizedDescription)", type: .unchanged, lineNumber: nil)]
         }
     }
 
-    private struct LineAnnotations {
-        var added: Set<Int> = []
-        var modified: Set<Int> = []
-    }
-
-    /// Parse unified diff to determine which lines in the new file are added vs modified.
-    private func parseAnnotations(from rawDiff: String) -> LineAnnotations {
-        var annotations = LineAnnotations()
+    /// Build diff lines directly from unified diff output, including deleted lines.
+    private func buildDiffLines(from rawDiff: String) -> [DiffLine] {
         let lines = rawDiff.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-
+        var result: [DiffLine] = []
+        var newLineNum = 1
         var i = 0
+
         while i < lines.count {
             let line = lines[i]
 
-            // Find hunk headers
             if line.hasPrefix("@@") {
-                // Parse @@ -old,count +new_start,count @@
-                guard let newStart = parseNewStart(from: line) else {
-                    i += 1
-                    continue
+                if let (_, newStart) = parseHunkHeader(line) {
+                    newLineNum = newStart
                 }
-
                 i += 1
-                var newLine = newStart
-
-                // Process lines within this hunk
-                while i < lines.count && !lines[i].hasPrefix("@@") && !lines[i].hasPrefix("diff ") {
-                    let hunkLine = lines[i]
-                    if hunkLine.hasPrefix("-") && !hunkLine.hasPrefix("---") {
-                        // Removed line — count consecutive removes, then match with adds
-                        var removeCount = 0
-                        while i < lines.count {
-                            let l = lines[i]
-                            if l.hasPrefix("-") && !l.hasPrefix("---") {
-                                removeCount += 1
-                                i += 1
-                            } else {
-                                break
-                            }
-                        }
-                        // Now count consecutive adds
-                        var addCount = 0
-                        while i < lines.count {
-                            let l = lines[i]
-                            if l.hasPrefix("+") && !l.hasPrefix("+++") {
-                                addCount += 1
-                                i += 1
-                            } else {
-                                break
-                            }
-                        }
-                        // First min(removeCount, addCount) are modifications
-                        let modifiedCount = min(removeCount, addCount)
-                        for j in 0..<modifiedCount {
-                            annotations.modified.insert(newLine + j)
-                        }
-                        // Remaining adds are pure additions
-                        for j in modifiedCount..<addCount {
-                            annotations.added.insert(newLine + j)
-                        }
-                        newLine += addCount
-                    } else if hunkLine.hasPrefix("+") && !hunkLine.hasPrefix("+++") {
-                        annotations.added.insert(newLine)
-                        newLine += 1
-                        i += 1
-                    } else if hunkLine.hasPrefix("diff ") || hunkLine.hasPrefix("index ") || hunkLine.hasPrefix("---") || hunkLine.hasPrefix("+++") {
-                        i += 1
-                    } else {
-                        // Context line
-                        newLine += 1
-                        i += 1
-                    }
+            } else if line.hasPrefix("diff ") || line.hasPrefix("index ") || line.hasPrefix("---") || line.hasPrefix("+++") {
+                i += 1
+            } else if line.hasPrefix("-") {
+                // Collect consecutive removes
+                var removes: [String] = []
+                while i < lines.count && lines[i].hasPrefix("-") && !lines[i].hasPrefix("---") {
+                    removes.append(String(lines[i].dropFirst()))
+                    i += 1
                 }
+                // Collect consecutive adds
+                var adds: [String] = []
+                while i < lines.count && lines[i].hasPrefix("+") && !lines[i].hasPrefix("+++") {
+                    adds.append(String(lines[i].dropFirst()))
+                    i += 1
+                }
+
+                let modCount = min(removes.count, adds.count)
+
+                // Emit deleted lines first (paired deletions shown before their replacements)
+                for j in 0..<modCount {
+                    result.append(DiffLine(content: removes[j], type: .deleted, lineNumber: nil))
+                }
+                // Extra removes (pure deletions)
+                for j in modCount..<removes.count {
+                    result.append(DiffLine(content: removes[j], type: .deleted, lineNumber: nil))
+                }
+
+                // Then modified lines (replacements for paired deletions)
+                for j in 0..<modCount {
+                    result.append(DiffLine(content: adds[j], type: .modified, lineNumber: newLineNum))
+                    newLineNum += 1
+                }
+                // Extra adds (pure additions)
+                for j in modCount..<adds.count {
+                    result.append(DiffLine(content: adds[j], type: .added, lineNumber: newLineNum))
+                    newLineNum += 1
+                }
+            } else if line.hasPrefix("+") {
+                result.append(DiffLine(content: String(line.dropFirst()), type: .added, lineNumber: newLineNum))
+                newLineNum += 1
+                i += 1
             } else {
+                // Context line
+                let content = line.hasPrefix(" ") ? String(line.dropFirst()) : line
+                result.append(DiffLine(content: content, type: .unchanged, lineNumber: newLineNum))
+                newLineNum += 1
                 i += 1
             }
         }
-        return annotations
+        return result
     }
 
     // MARK: - Side-by-side diff
@@ -295,21 +268,6 @@ final class GitChangesViewModel {
         let newNum = Int(newPart.dropFirst().split(separator: ",").first ?? "")
         guard let o = oldNum, let n = newNum else { return nil }
         return (o, n)
-    }
-
-    private func parseNewStart(from header: String) -> Int? {
-        // @@ -old_start[,count] +new_start[,count] @@
-        guard let plusIndex = header.firstIndex(of: "+") else { return nil }
-        let afterPlus = header[header.index(after: plusIndex)...]
-        let numStr: String
-        if let commaIndex = afterPlus.firstIndex(of: ",") {
-            numStr = String(afterPlus[..<commaIndex])
-        } else if let spaceIndex = afterPlus.firstIndex(of: " ") {
-            numStr = String(afterPlus[..<spaceIndex])
-        } else {
-            numStr = String(afterPlus)
-        }
-        return Int(numStr)
     }
 
     // MARK: - Syntax highlighting

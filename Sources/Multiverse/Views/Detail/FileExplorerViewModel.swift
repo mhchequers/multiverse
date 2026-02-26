@@ -20,6 +20,7 @@ struct FileNode: Identifiable, Hashable {
 struct LineAnnotations {
     var added: Set<Int> = []
     var modified: Set<Int> = []
+    var deleted: Set<Int> = []  // line numbers AFTER which deletions occurred (0 = before line 1)
 }
 
 @Observable
@@ -232,6 +233,10 @@ final class FileExplorerViewModel {
                         }
                         for j in modifiedCount..<addCount {
                             annotations.added.insert(newLine + j)
+                        }
+                        // Track pure deletions (excess removes with no matching adds)
+                        if removeCount > addCount {
+                            annotations.deleted.insert(max(0, newLine + addCount - 1))
                         }
                         newLine += addCount
                     } else if hunkLine.hasPrefix("+") && !hunkLine.hasPrefix("+++") {

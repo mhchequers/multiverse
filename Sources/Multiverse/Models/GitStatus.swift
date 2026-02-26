@@ -99,12 +99,14 @@ struct DiffLine: Identifiable {
     let id = UUID()
     let content: String
     let type: LineType
+    let lineNumber: Int?
     var highlightedContent: AttributedString?
 
     enum LineType {
         case unchanged
         case added     // green gutter — new line not in old file
         case modified  // blue gutter — line that replaced an old line
+        case deleted   // red gutter — line removed from old file
     }
 }
 
