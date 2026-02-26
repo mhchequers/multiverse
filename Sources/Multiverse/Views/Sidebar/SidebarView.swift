@@ -41,11 +41,20 @@ struct SidebarView: View {
 
     private var filteredProjects: [Project] {
         let active = projects.filter { $0.status == appState.statusFilter }
-        if appState.searchText.isEmpty { return active }
-        let query = appState.searchText.lowercased()
-        return active.filter {
-            $0.name.lowercased().contains(query) ||
-            $0.projectDescription.lowercased().contains(query)
+        let filtered: [Project]
+        if appState.searchText.isEmpty {
+            filtered = active
+        } else {
+            let query = appState.searchText.lowercased()
+            filtered = active.filter {
+                $0.name.lowercased().contains(query) ||
+                $0.projectDescription.lowercased().contains(query)
+            }
+        }
+        return filtered.sorted {
+            let t0 = $0.activities.map(\.timestamp).max() ?? .distantPast
+            let t1 = $1.activities.map(\.timestamp).max() ?? .distantPast
+            return t0 > t1
         }
     }
 }
