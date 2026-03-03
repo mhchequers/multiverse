@@ -118,7 +118,7 @@ struct FileExplorerView: View {
                     .padding(.horizontal, 8)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        Task { await vm.selectFile(node) }
+                        Task { await vm.openFile(node) }
                     }
             )
         }
@@ -144,7 +144,7 @@ struct FileExplorerView: View {
         }
         .padding(.vertical, 3)
         .background(
-            vm.selectedFile?.id == node.id
+            vm.selectedTab?.filePath == node.path
                 ? Color.accentColor.opacity(0.2)
                 : Color.clear
         )
@@ -153,32 +153,25 @@ struct FileExplorerView: View {
     @ViewBuilder
     private func editorPanel(vm: FileExplorerViewModel) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let selected = vm.selectedFile {
-                HStack {
-                    Image(systemName: fileIcon(for: selected.name))
-                    Text(selected.path)
-                        .fontWeight(.medium)
-                    Spacer()
-                }
-                .font(.callout)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.white.opacity(0.05))
-
+            if !vm.tabs.isEmpty {
+                tabBar(vm: vm)
                 Divider()
 
-                CodeEditorView(
-                    text: Binding(
-                        get: { vm.fileContent },
-                        set: {
-                            vm.fileContent = $0
-                            vm.contentDidChange()
-                        }
-                    ),
-                    filename: selected.name,
-                    annotations: vm.annotations,
-                    onSave: { vm.saveFile() }
-                )
+                if vm.selectedTab != nil {
+                    CodeEditorView(
+                        text: Binding(
+                            get: { vm.currentContent },
+                            set: {
+                                vm.currentContent = $0
+                                vm.contentDidChange()
+                            }
+                        ),
+                        filename: vm.currentFilename,
+                        annotations: vm.currentAnnotations,
+                        onSave: { vm.saveCurrentTab() }
+                    )
+                    .id(vm.selectedTabId)
+                }
             } else {
                 ContentUnavailableView(
                     "No File Selected",
@@ -187,6 +180,60 @@ struct FileExplorerView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func tabBar(vm: FileExplorerViewModel) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                ForEach(vm.tabs) { tab in
+                    tabView(tab: tab, vm: vm)
+                }
+            }
+        }
+        .background(.white.opacity(0.03))
+    }
+
+    private func tabView(tab: EditorTab, vm: FileExplorerViewModel) -> some View {
+        let isSelected = vm.selectedTabId == tab.id
+        return HStack(spacing: 5) {
+            Image(systemName: fileIcon(for: tab.filename))
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+            Text(tab.filename)
+                .font(.system(.callout, design: .monospaced))
+                .lineLimit(1)
+
+            if tab.isDirty {
+                Circle()
+                    .fill(.white.opacity(0.6))
+                    .frame(width: 6, height: 6)
+            }
+
+            Button {
+                vm.closeTab(tab.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(isSelected ? .white.opacity(0.08) : .clear)
+        .overlay(alignment: .bottom) {
+            if isSelected {
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(height: 2)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            vm.selectTab(tab.id)
         }
     }
 

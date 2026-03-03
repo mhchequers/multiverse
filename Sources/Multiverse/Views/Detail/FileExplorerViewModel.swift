@@ -23,16 +23,65 @@ struct LineAnnotations {
     var deleted: Set<Int> = []  // line numbers AFTER which deletions occurred (0 = before line 1)
 }
 
+struct EditorTab: Identifiable, Equatable {
+    let id: UUID = UUID()
+    let filePath: String      // relative path (matches FileNode.path)
+    let filename: String      // display name (matches FileNode.name)
+    var content: String
+    var savedContent: String   // snapshot at last save
+    var annotations: LineAnnotations
+
+    var isDirty: Bool { content != savedContent }
+
+    init(node: FileNode, content: String, annotations: LineAnnotations) {
+        self.filePath = node.path
+        self.filename = node.name
+        self.content = content
+        self.savedContent = content
+        self.annotations = annotations
+    }
+
+    static func == (lhs: EditorTab, rhs: EditorTab) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 @Observable
 @MainActor
 final class FileExplorerViewModel {
     var rootNodes: [FileNode] = []
-    var selectedFile: FileNode?
-    var fileContent: String = ""
-    var annotations: LineAnnotations = LineAnnotations()
+    var tabs: [EditorTab] = []
+    var selectedTabId: UUID?
     var expandedDirectories: Set<String> = []
     var isLoading = false
     var error: String?
+
+    var selectedTab: EditorTab? {
+        guard let id = selectedTabId else { return nil }
+        return tabs.first { $0.id == id }
+    }
+
+    private var selectedTabIndex: Int? {
+        guard let id = selectedTabId else { return nil }
+        return tabs.firstIndex { $0.id == id }
+    }
+
+    // Convenience properties for view bindings
+    var currentContent: String {
+        get { selectedTab?.content ?? "" }
+        set {
+            guard let index = selectedTabIndex else { return }
+            tabs[index].content = newValue
+        }
+    }
+
+    var currentAnnotations: LineAnnotations {
+        selectedTab?.annotations ?? LineAnnotations()
+    }
+
+    var currentFilename: String {
+        selectedTab?.filename ?? ""
+    }
 
     private let gitService: GitService
     private let directory: String
@@ -58,29 +107,51 @@ final class FileExplorerViewModel {
         isLoading = false
     }
 
-    func selectFile(_ node: FileNode) async {
+    func openFile(_ node: FileNode) async {
         guard !node.isDirectory else { return }
-        // Save any pending changes to the current file before switching
-        saveTask?.cancel()
-        if selectedFile != nil { saveFile() }
 
-        selectedFile = node
+        // If already open, just focus that tab
+        if let existing = tabs.first(where: { $0.filePath == node.path }) {
+            selectedTabId = existing.id
+            return
+        }
+
+        // Save pending changes on current tab
+        saveTask?.cancel()
+        if selectedTabIndex != nil { saveCurrentTab() }
+
         isLoadingFile = true
         do {
             let fullPath = (directory as NSString).appendingPathComponent(node.path)
-            fileContent = try String(contentsOfFile: fullPath, encoding: .utf8)
-
-            // Get git diff annotations
+            let content = try String(contentsOfFile: fullPath, encoding: .utf8)
             var rawDiff = try await gitService.diff(for: node.path, staged: false, in: directory)
             if rawDiff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 rawDiff = try await gitService.diff(for: node.path, staged: true, in: directory)
             }
-            annotations = parseAnnotations(from: rawDiff)
+            let annotations = parseAnnotations(from: rawDiff)
+            let tab = EditorTab(node: node, content: content, annotations: annotations)
+            tabs.append(tab)
+            selectedTabId = tab.id
         } catch {
-            fileContent = "Error loading file: \(error.localizedDescription)"
-            annotations = LineAnnotations()
+            self.error = "Error loading file: \(error.localizedDescription)"
         }
         isLoadingFile = false
+    }
+
+    func closeTab(_ tabId: UUID) {
+        guard let index = tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        if tabs[index].isDirty { saveTab(at: index) }
+        let wasSelected = selectedTabId == tabId
+        tabs.remove(at: index)
+        if wasSelected {
+            selectedTabId = tabs.isEmpty ? nil : tabs[min(index, tabs.count - 1)].id
+        }
+    }
+
+    func selectTab(_ tabId: UUID) {
+        guard tabId != selectedTabId else { return }
+        saveTask?.cancel()
+        selectedTabId = tabId
     }
 
     func contentDidChange() {
@@ -89,25 +160,31 @@ final class FileExplorerViewModel {
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            saveFile()
+            saveCurrentTab()
         }
     }
 
-    func saveFile() {
-        guard let node = selectedFile else { return }
-        let fullPath = (directory as NSString).appendingPathComponent(node.path)
+    func saveCurrentTab() {
+        guard let index = selectedTabIndex else { return }
+        saveTab(at: index)
+    }
+
+    private func saveTab(at index: Int) {
+        let tab = tabs[index]
+        let fullPath = (directory as NSString).appendingPathComponent(tab.filePath)
         do {
-            try fileContent.write(toFile: fullPath, atomically: true, encoding: .utf8)
-            // Re-fetch annotations after save
-            let savedPath = node.path
+            try tab.content.write(toFile: fullPath, atomically: true, encoding: .utf8)
+            tabs[index].savedContent = tab.content
+            let savedPath = tab.filePath
+            let tabId = tab.id
             Task {
                 var rawDiff = try await gitService.diff(for: savedPath, staged: false, in: directory)
                 if rawDiff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     rawDiff = try await gitService.diff(for: savedPath, staged: true, in: directory)
                 }
-                // Only update annotations if we're still viewing this file
-                guard selectedFile?.path == savedPath else { return }
-                annotations = parseAnnotations(from: rawDiff)
+                if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
+                    tabs[idx].annotations = parseAnnotations(from: rawDiff)
+                }
             }
         } catch {
             self.error = "Failed to save: \(error.localizedDescription)"
