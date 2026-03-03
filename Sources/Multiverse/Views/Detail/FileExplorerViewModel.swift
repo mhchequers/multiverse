@@ -23,22 +23,58 @@ struct LineAnnotations {
     var deleted: Set<Int> = []  // line numbers AFTER which deletions occurred (0 = before line 1)
 }
 
+private let imageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "tiff", "bmp", "webp", "svg", "ico", "heic"]
+
+func isImageFile(_ filename: String) -> Bool {
+    let ext = (filename as NSString).pathExtension.lowercased()
+    return imageExtensions.contains(ext)
+}
+
+enum TabContent: Equatable {
+    case text(content: String, savedContent: String)
+    case image(fullPath: String)
+}
+
 struct EditorTab: Identifiable, Equatable {
     let id: UUID = UUID()
     let filePath: String      // relative path (matches FileNode.path)
     let filename: String      // display name (matches FileNode.name)
-    var content: String
-    var savedContent: String   // snapshot at last save
+    var tabContent: TabContent
     var annotations: LineAnnotations
 
-    var isDirty: Bool { content != savedContent }
+    var isDirty: Bool {
+        if case .text(let content, let savedContent) = tabContent { return content != savedContent }
+        return false
+    }
+
+    var isImage: Bool {
+        if case .image = tabContent { return true }
+        return false
+    }
+
+    // Backward-compatible computed properties
+    var content: String {
+        get { if case .text(let c, _) = tabContent { return c } else { return "" } }
+        set { if case .text(_, let s) = tabContent { tabContent = .text(content: newValue, savedContent: s) } }
+    }
+
+    var savedContent: String {
+        get { if case .text(_, let s) = tabContent { return s } else { return "" } }
+        set { if case .text(let c, _) = tabContent { tabContent = .text(content: c, savedContent: newValue) } }
+    }
 
     init(node: FileNode, content: String, annotations: LineAnnotations) {
         self.filePath = node.path
         self.filename = node.name
-        self.content = content
-        self.savedContent = content
+        self.tabContent = .text(content: content, savedContent: content)
         self.annotations = annotations
+    }
+
+    init(node: FileNode, imagePath: String) {
+        self.filePath = node.path
+        self.filename = node.name
+        self.tabContent = .image(fullPath: imagePath)
+        self.annotations = LineAnnotations()
     }
 
     static func == (lhs: EditorTab, rhs: EditorTab) -> Bool {
@@ -83,6 +119,15 @@ final class FileExplorerViewModel {
         selectedTab?.filename ?? ""
     }
 
+    var currentImagePath: String? {
+        guard let tab = selectedTab, case .image(let path) = tab.tabContent else { return nil }
+        return path
+    }
+
+    var currentTabIsImage: Bool {
+        selectedTab?.isImage ?? false
+    }
+
     private let gitService: GitService
     private let directory: String
     private let runner = ProcessRunner.shared
@@ -120,9 +165,17 @@ final class FileExplorerViewModel {
         saveTask?.cancel()
         if selectedTabIndex != nil { saveCurrentTab() }
 
+        let fullPath = (directory as NSString).appendingPathComponent(node.path)
+
+        if isImageFile(node.name) {
+            let tab = EditorTab(node: node, imagePath: fullPath)
+            tabs.append(tab)
+            selectedTabId = tab.id
+            return
+        }
+
         isLoadingFile = true
         do {
-            let fullPath = (directory as NSString).appendingPathComponent(node.path)
             let content = try String(contentsOfFile: fullPath, encoding: .utf8)
             var rawDiff = try await gitService.diff(for: node.path, staged: false, in: directory)
             if rawDiff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -170,6 +223,7 @@ final class FileExplorerViewModel {
     }
 
     private func saveTab(at index: Int) {
+        guard !tabs[index].isImage else { return }
         let tab = tabs[index]
         let fullPath = (directory as NSString).appendingPathComponent(tab.filePath)
         do {

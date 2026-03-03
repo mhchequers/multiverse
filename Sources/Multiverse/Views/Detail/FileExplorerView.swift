@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct FileExplorerView: View {
@@ -158,19 +159,24 @@ struct FileExplorerView: View {
                 Divider()
 
                 if vm.selectedTab != nil {
-                    CodeEditorView(
-                        text: Binding(
-                            get: { vm.currentContent },
-                            set: {
-                                vm.currentContent = $0
-                                vm.contentDidChange()
-                            }
-                        ),
-                        filename: vm.currentFilename,
-                        annotations: vm.currentAnnotations,
-                        onSave: { vm.saveCurrentTab() }
-                    )
-                    .id(vm.selectedTabId)
+                    if vm.currentTabIsImage, let imagePath = vm.currentImagePath {
+                        imageViewer(path: imagePath)
+                            .id(vm.selectedTabId)
+                    } else {
+                        CodeEditorView(
+                            text: Binding(
+                                get: { vm.currentContent },
+                                set: {
+                                    vm.currentContent = $0
+                                    vm.contentDidChange()
+                                }
+                            ),
+                            filename: vm.currentFilename,
+                            annotations: vm.currentAnnotations,
+                            onSave: { vm.saveCurrentTab() }
+                        )
+                        .id(vm.selectedTabId)
+                    }
                 }
             } else {
                 ContentUnavailableView(
@@ -237,6 +243,20 @@ struct FileExplorerView: View {
         }
     }
 
+    @ViewBuilder
+    private func imageViewer(path: String) -> some View {
+        if let nsImage = NSImage(contentsOfFile: path) {
+            ImageViewerContent(nsImage: nsImage)
+        } else {
+            ContentUnavailableView(
+                "Cannot Display Image",
+                systemImage: "photo",
+                description: Text("The image file could not be loaded.")
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
     private func fileIcon(for name: String) -> String {
         let ext = (name as NSString).pathExtension.lowercased()
         switch ext {
@@ -249,6 +269,111 @@ struct FileExplorerView: View {
         case "html", "css": return "globe"
         case "png", "jpg", "jpeg", "gif", "svg": return "photo"
         default: return "doc"
+        }
+    }
+}
+
+// MARK: - Image Viewer with Zoom
+
+private struct ImageViewerContent: View {
+    let nsImage: NSImage
+
+    @State private var scale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    private let minScale: CGFloat = 0.1
+    private let maxScale: CGFloat = 10.0
+
+    var body: some View {
+        GeometryReader { geo in
+            Image(nsImage: nsImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .scaleEffect(scale)
+                .offset(offset)
+                .frame(width: geo.size.width, height: geo.size.height)
+                .clipped()
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            offset = CGSize(
+                                width: lastOffset.width + value.translation.width,
+                                height: lastOffset.height + value.translation.height
+                            )
+                        }
+                        .onEnded { _ in
+                            lastOffset = offset
+                        }
+                )
+                .onTapGesture(count: 2) { resetZoom() }
+                .overlay {
+                    ZoomGestureView { factor, anchor in
+                        zoomAround(factor: factor, anchor: anchor, viewSize: geo.size)
+                    }
+                }
+        }
+        .padding(20)
+    }
+
+    private func zoomAround(factor: CGFloat, anchor: CGPoint, viewSize: CGSize) {
+        let newScale = clampScale(scale * factor)
+        let actualFactor = newScale / scale
+        let cx = anchor.x - viewSize.width / 2
+        let cy = anchor.y - viewSize.height / 2
+        offset = CGSize(
+            width: offset.width * actualFactor + cx * (1 - actualFactor),
+            height: offset.height * actualFactor + cy * (1 - actualFactor)
+        )
+        lastOffset = offset
+        scale = newScale
+    }
+
+    private func clampScale(_ value: CGFloat) -> CGFloat {
+        min(maxScale, max(minScale, value))
+    }
+
+    private func resetZoom() {
+        scale = 1.0
+        offset = .zero
+        lastOffset = .zero
+    }
+}
+
+private struct ZoomGestureView: NSViewRepresentable {
+    var onZoom: (CGFloat, CGPoint) -> Void
+
+    func makeNSView(context: Context) -> ZoomGestureNSView {
+        let view = ZoomGestureNSView()
+        view.onZoom = onZoom
+        let magnify = NSMagnificationGestureRecognizer(
+            target: view, action: #selector(view.handleMagnify(_:))
+        )
+        view.addGestureRecognizer(magnify)
+        return view
+    }
+
+    func updateNSView(_ nsView: ZoomGestureNSView, context: Context) {
+        nsView.onZoom = onZoom
+    }
+
+    class ZoomGestureNSView: NSView {
+        var onZoom: ((CGFloat, CGPoint) -> Void)?
+
+        override func scrollWheel(with event: NSEvent) {
+            let loc = convert(event.locationInWindow, from: nil)
+            let swiftUIPoint = CGPoint(x: loc.x, y: bounds.height - loc.y)
+            let factor = 1.0 + (event.scrollingDeltaY * 0.03)
+            onZoom?(factor, swiftUIPoint)
+        }
+
+        @objc func handleMagnify(_ gesture: NSMagnificationGestureRecognizer) {
+            let loc = gesture.location(in: self)
+            let swiftUIPoint = CGPoint(x: loc.x, y: bounds.height - loc.y)
+            let factor = 1.0 + gesture.magnification
+            gesture.magnification = 0
+            onZoom?(factor, swiftUIPoint)
         }
     }
 }
