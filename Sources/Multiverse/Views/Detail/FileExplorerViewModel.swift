@@ -89,6 +89,7 @@ final class FileExplorerViewModel {
     var tabs: [EditorTab] = []
     var selectedTabId: UUID?
     var expandedDirectories: Set<String> = []
+    var revealTargetNodeId: String?
     var isLoading = false
     var error: String?
 
@@ -251,6 +252,19 @@ final class FileExplorerViewModel {
         guard tabId != selectedTabId else { return }
         saveTask?.cancel()
         selectedTabId = tabId
+        if let tab = tabs.first(where: { $0.id == tabId }) {
+            revealFileInTree(tab.filePath)
+        }
+    }
+
+    func revealFileInTree(_ filePath: String) {
+        let components = filePath.split(separator: "/").map(String.init)
+        var accumulated = ""
+        for i in 0..<(components.count - 1) {
+            accumulated += (accumulated.isEmpty ? "" : "/") + components[i]
+            expandedDirectories.insert(accumulated)
+        }
+        revealTargetNodeId = filePath
     }
 
     func contentDidChange() {

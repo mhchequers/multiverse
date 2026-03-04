@@ -81,13 +81,25 @@ struct FileExplorerView: View {
 
             Divider()
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(vm.rootNodes) { node in
-                        fileNodeView(node: node, vm: vm, depth: 0)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(vm.rootNodes) { node in
+                            fileNodeView(node: node, vm: vm, depth: 0)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .onChange(of: vm.revealTargetNodeId) { _, targetId in
+                    if let targetId {
+                        DispatchQueue.main.async {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                proxy.scrollTo(targetId, anchor: .center)
+                            }
+                            vm.revealTargetNodeId = nil
+                        }
                     }
                 }
-                .padding(.vertical, 4)
             }
         }
     }
@@ -118,6 +130,7 @@ struct FileExplorerView: View {
                 }
                 .padding(.leading, CGFloat(depth) * 12)
                 .padding(.horizontal, 8)
+                .id(node.id)
             )
         } else {
             return AnyView(
@@ -128,6 +141,7 @@ struct FileExplorerView: View {
                     .onTapGesture {
                         Task { await vm.openFile(node) }
                     }
+                    .id(node.id)
             )
         }
     }
