@@ -444,6 +444,9 @@ struct ProjectDetailView: View {
             .onReceive(NotificationCenter.default.publisher(for: .openFileInExplorer)) { notification in
                 guard let targetId = notification.userInfo?["projectId"] as? String,
                       targetId == project.id.uuidString else { return }
+                if let path = notification.userInfo?["path"] as? String {
+                    appState.setPendingOpenFile(path: path, for: targetId)
+                }
                 selectedTab = .fileExplorer
             }
 

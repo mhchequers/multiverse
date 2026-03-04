@@ -26,6 +26,9 @@ struct FileExplorerView: View {
         } else {
             viewModel = nil
         }
+        if let vm = viewModel, let pending = appState.consumePendingOpenFile(for: projectId) {
+            Task { await vm.openFileByPath(pending) }
+        }
     }
 
     var body: some View {

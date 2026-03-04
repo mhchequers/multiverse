@@ -101,4 +101,16 @@ final class AppState {
         guard !deletedProjectIds.contains(projectId) else { return }
         fileExplorerCache[projectId] = vm
     }
+
+    // MARK: - Pending File Open
+
+    private var pendingOpenFile: [String: String] = [:]  // projectId → path
+
+    func setPendingOpenFile(path: String, for projectId: String) {
+        pendingOpenFile[projectId] = path
+    }
+
+    func consumePendingOpenFile(for projectId: String) -> String? {
+        pendingOpenFile.removeValue(forKey: projectId)
+    }
 }

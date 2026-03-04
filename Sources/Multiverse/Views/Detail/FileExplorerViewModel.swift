@@ -184,6 +184,7 @@ final class FileExplorerViewModel {
         // If already open, just focus it
         if let existing = tabs.first(where: { $0.filePath == relativePath }) {
             selectedTabId = existing.id
+            revealFileInTree(relativePath)
             return
         }
 
@@ -197,6 +198,7 @@ final class FileExplorerViewModel {
             gitStatus: nil
         )
         await openFile(node)
+        revealFileInTree(relativePath)
     }
 
     func openFile(_ node: FileNode) async {
