@@ -11,6 +11,7 @@ enum DetailTab: String, CaseIterable {
 
 extension Notification.Name {
     static let launchClaude = Notification.Name("launchClaude")
+    static let openFileInExplorer = Notification.Name("openFileInExplorer")
 }
 
 private let codePlanTemplate = """
@@ -439,6 +440,11 @@ struct ProjectDetailView: View {
                     }
                     isEditing = false
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .openFileInExplorer)) { notification in
+                guard let targetId = notification.userInfo?["projectId"] as? String,
+                      targetId == project.id.uuidString else { return }
+                selectedTab = .fileExplorer
             }
 
             // Draggable divider

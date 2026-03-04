@@ -152,6 +152,25 @@ final class FileExplorerViewModel {
         isLoading = false
     }
 
+    func openFileByPath(_ relativePath: String) async {
+        // If already open, just focus it
+        if let existing = tabs.first(where: { $0.filePath == relativePath }) {
+            selectedTabId = existing.id
+            return
+        }
+
+        let name = (relativePath as NSString).lastPathComponent
+        let node = FileNode(
+            id: relativePath,
+            name: name,
+            path: relativePath,
+            isDirectory: false,
+            children: [],
+            gitStatus: nil
+        )
+        await openFile(node)
+    }
+
     func openFile(_ node: FileNode) async {
         guard !node.isDirectory else { return }
 

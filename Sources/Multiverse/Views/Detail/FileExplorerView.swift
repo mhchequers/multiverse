@@ -47,6 +47,13 @@ struct FileExplorerView: View {
         }
         .onAppear { ensureViewModel() }
         .onChange(of: project.id) { _, _ in ensureViewModel() }
+        .onReceive(NotificationCenter.default.publisher(for: .openFileInExplorer)) { notification in
+            guard let path = notification.userInfo?["path"] as? String,
+                  let targetId = notification.userInfo?["projectId"] as? String,
+                  targetId == project.id.uuidString,
+                  let vm = viewModel else { return }
+            Task { await vm.openFileByPath(path) }
+        }
     }
 
     @ViewBuilder

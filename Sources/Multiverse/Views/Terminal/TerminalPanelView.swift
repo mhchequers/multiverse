@@ -82,7 +82,17 @@ struct TerminalPanelView: View {
                                     appState.registerTerminal(tv)
                                 }
                             }
-                        )
+                        ),
+                        onOpenFilePath: { relativePath in
+                            NotificationCenter.default.post(
+                                name: .openFileInExplorer,
+                                object: nil,
+                                userInfo: [
+                                    "path": relativePath,
+                                    "projectId": projectId
+                                ]
+                            )
+                        }
                     )
                     .opacity(selectedTabId == tab.id ? 1 : 0)
                     .allowsHitTesting(selectedTabId == tab.id)

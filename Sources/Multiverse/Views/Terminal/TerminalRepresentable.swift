@@ -31,16 +31,21 @@ struct TerminalRepresentable: NSViewRepresentable {
     let workingDirectory: String
     let initialCommand: String?
     @Binding var terminalView: MonitoredTerminalView?
+    var onOpenFilePath: ((String) -> Void)?
 
-    init(workingDirectory: String, initialCommand: String? = nil, terminalView: Binding<MonitoredTerminalView?>) {
+    init(workingDirectory: String, initialCommand: String? = nil, terminalView: Binding<MonitoredTerminalView?>, onOpenFilePath: ((String) -> Void)? = nil) {
         self.workingDirectory = workingDirectory
         self.initialCommand = initialCommand
         self._terminalView = terminalView
+        self.onOpenFilePath = onOpenFilePath
     }
 
     func makeNSView(context: Context) -> MonitoredTerminalView {
         // Reuse cached terminal if available (restored from session cache)
         if let existing = terminalView {
+            existing.workingDirectory = workingDirectory
+            existing.onOpenFilePath = onOpenFilePath
+            existing.installCmdClickMonitor()
             return existing
         }
 
@@ -54,6 +59,9 @@ struct TerminalRepresentable: NSViewRepresentable {
         // Custom palette with brighter "bright black" (index 8) for visibility on dark bg
         terminal.installColors(terminalPalette)
 
+        terminal.workingDirectory = workingDirectory
+        terminal.onOpenFilePath = onOpenFilePath
+        terminal.installCmdClickMonitor()
 
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
 
@@ -85,5 +93,7 @@ struct TerminalRepresentable: NSViewRepresentable {
         return terminal
     }
 
-    func updateNSView(_ nsView: MonitoredTerminalView, context: Context) {}
+    func updateNSView(_ nsView: MonitoredTerminalView, context: Context) {
+        nsView.onOpenFilePath = onOpenFilePath
+    }
 }
