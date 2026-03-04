@@ -163,6 +163,7 @@ struct FileExplorerView: View {
         VStack(alignment: .leading, spacing: 0) {
             if !vm.tabs.isEmpty {
                 tabBar(vm: vm)
+                breadcrumbBar(vm: vm)
                 Divider()
 
                 if vm.selectedTab != nil {
@@ -197,6 +198,31 @@ struct FileExplorerView: View {
     }
 
     @ViewBuilder
+    private func breadcrumbBar(vm: FileExplorerViewModel) -> some View {
+        if let tab = vm.selectedTab,
+           let label = vm.tabDisplayLabels[tab.id],
+           label != tab.filename {
+            let segments = tab.filePath.split(separator: "/").map(String.init)
+            HStack(spacing: 4) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { index, segment in
+                    if index > 0 {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.tertiary)
+                    }
+                    Text(segment)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(.white.opacity(0.03))
+        }
+    }
+
+    @ViewBuilder
     private func tabBar(vm: FileExplorerViewModel) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
@@ -215,7 +241,7 @@ struct FileExplorerView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
-            Text(tab.filename)
+            Text(vm.tabDisplayLabels[tab.id] ?? tab.filename)
                 .font(.system(.callout, design: .monospaced))
                 .lineLimit(1)
 

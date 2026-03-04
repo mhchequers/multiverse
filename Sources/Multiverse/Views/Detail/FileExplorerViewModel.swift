@@ -128,6 +128,33 @@ final class FileExplorerViewModel {
         selectedTab?.isImage ?? false
     }
 
+    var tabDisplayLabels: [UUID: String] {
+        let grouped = Dictionary(grouping: tabs) { $0.filename }
+        var labels: [UUID: String] = [:]
+        for (filename, group) in grouped {
+            if group.count == 1 {
+                labels[group[0].id] = filename
+            } else {
+                let paths = group.map { $0.filePath.split(separator: "/").map(String.init) }
+                let maxDepth = paths.map(\.count).max() ?? 1
+                var depth = 2
+                while depth <= maxDepth {
+                    let suffixes = paths.map { segments in
+                        segments.suffix(depth).joined(separator: "/")
+                    }
+                    if Set(suffixes).count == suffixes.count || depth == maxDepth {
+                        for (i, tab) in group.enumerated() {
+                            labels[tab.id] = suffixes[i]
+                        }
+                        break
+                    }
+                    depth += 1
+                }
+            }
+        }
+        return labels
+    }
+
     private let gitService: GitService
     private let directory: String
     private let runner = ProcessRunner.shared
