@@ -5,6 +5,8 @@ struct FileExplorerView: View {
     let project: Project
     @Environment(AppState.self) private var appState
     @State private var viewModel: FileExplorerViewModel?
+    @State private var treeWidth: CGFloat = 0
+    @State private var treeHeight: CGFloat = 0
 
     private var workingDirectory: String? {
         if let wt = project.worktreePath, !wt.isEmpty { return wt }
@@ -82,13 +84,20 @@ struct FileExplorerView: View {
             Divider()
 
             ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
+                ScrollView([.vertical, .horizontal]) {
+                    VStack(alignment: .leading, spacing: 0) {
                         ForEach(vm.rootNodes) { node in
                             fileNodeView(node: node, vm: vm, depth: 0)
                         }
                     }
                     .padding(.vertical, 4)
+                    .frame(minWidth: treeWidth, minHeight: treeHeight, alignment: .topLeading)
+                }
+                .onGeometryChange(for: CGSize.self) { geo in
+                    geo.size
+                } action: { newSize in
+                    treeWidth = newSize.width
+                    treeHeight = newSize.height
                 }
                 .onChange(of: vm.revealTargetNodeId) { _, targetId in
                     if let targetId {
@@ -105,45 +114,45 @@ struct FileExplorerView: View {
     }
 
     private func fileNodeView(node: FileNode, vm: FileExplorerViewModel, depth: Int) -> AnyView {
-        if node.isDirectory {
-            return AnyView(
-                DisclosureGroup(isExpanded: Binding(
-                    get: { vm.expandedDirectories.contains(node.id) },
-                    set: { isExpanded in
-                        if isExpanded { vm.expandedDirectories.insert(node.id) }
-                        else { vm.expandedDirectories.remove(node.id) }
+        let isExpanded = node.isDirectory && vm.expandedDirectories.contains(node.id)
+
+        return AnyView(
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 2) {
+                    Group {
+                        if node.isDirectory {
+                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                )) {
+                    .frame(width: 12)
+
+                    fileLabel(node: node, vm: vm)
+                }
+                .padding(.leading, CGFloat(depth) * 8)
+                .padding(.horizontal, 8)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if node.isDirectory {
+                        if vm.expandedDirectories.contains(node.id) {
+                            vm.expandedDirectories.remove(node.id)
+                        } else {
+                            vm.expandedDirectories.insert(node.id)
+                        }
+                    } else {
+                        Task { await vm.openFile(node) }
+                    }
+                }
+                .id(node.id)
+
+                if isExpanded {
                     ForEach(node.children) { child in
                         fileNodeView(node: child, vm: vm, depth: depth + 1)
                     }
-                } label: {
-                    fileLabel(node: node, vm: vm)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if vm.expandedDirectories.contains(node.id) {
-                                vm.expandedDirectories.remove(node.id)
-                            } else {
-                                vm.expandedDirectories.insert(node.id)
-                            }
-                        }
                 }
-                .padding(.leading, CGFloat(depth) * 12)
-                .padding(.horizontal, 8)
-                .id(node.id)
-            )
-        } else {
-            return AnyView(
-                fileLabel(node: node, vm: vm)
-                    .padding(.leading, CGFloat(depth) * 12 + 20)
-                    .padding(.horizontal, 8)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        Task { await vm.openFile(node) }
-                    }
-                    .id(node.id)
-            )
-        }
+            }
+        )
     }
 
     private func fileLabel(node: FileNode, vm: FileExplorerViewModel) -> some View {
