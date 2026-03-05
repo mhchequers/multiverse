@@ -61,44 +61,63 @@ struct ProjectDetailView: View {
         return (try? AttributedString(markdown: source, options: options)) ?? AttributedString(source)
     }
 
+    private func renderLine(_ line: String) -> AttributedString {
+        var attributed: AttributedString
+
+        if line.hasPrefix("###### ") {
+            attributed = inlineMarkdown(String(line.dropFirst(7)))
+            attributed.font = .system(.callout, weight: .bold)
+        } else if line.hasPrefix("##### ") {
+            attributed = inlineMarkdown(String(line.dropFirst(6)))
+            attributed.font = .system(.callout, weight: .bold)
+        } else if line.hasPrefix("#### ") {
+            attributed = inlineMarkdown(String(line.dropFirst(5)))
+            attributed.font = .system(.body, weight: .bold)
+        } else if line.hasPrefix("### ") {
+            attributed = inlineMarkdown(String(line.dropFirst(4)))
+            attributed.font = .system(.title3, weight: .semibold)
+        } else if line.hasPrefix("## ") {
+            attributed = inlineMarkdown(String(line.dropFirst(3)))
+            attributed.font = .system(.title2, weight: .semibold)
+        } else if line.hasPrefix("# ") {
+            attributed = inlineMarkdown(String(line.dropFirst(2)))
+            attributed.font = .system(.title, weight: .bold)
+        } else if line.hasPrefix("> ") {
+            let inner = String(line.dropFirst(2))
+            attributed = renderLine(inner)
+            var bar = AttributedString("\u{258F} ")
+            bar.foregroundColor = .secondary
+            attributed = bar + attributed
+            attributed.foregroundColor = .secondary
+            var container = AttributeContainer()
+            container.paragraphStyle = {
+                let style = NSMutableParagraphStyle()
+                style.headIndent = 16
+                style.firstLineHeadIndent = 8
+                return style
+            }()
+            attributed.mergeAttributes(container)
+        } else if line.hasPrefix("- ") || line.hasPrefix("* ") {
+            let content = String(line.dropFirst(2))
+            attributed = AttributedString("  \u{2022} ") + inlineMarkdown(content)
+        } else if let match = line.range(of: #"^(\d+)\. "#, options: .regularExpression) {
+            let number = line[line.startIndex..<line.index(before: match.upperBound)]
+                .trimmingCharacters(in: .whitespaces.union(.punctuationCharacters))
+            let content = String(line[match.upperBound...])
+            attributed = AttributedString("  \(number). ") + inlineMarkdown(content)
+        } else {
+            attributed = inlineMarkdown(line)
+        }
+
+        return attributed
+    }
+
     private func renderedMarkdown(_ source: String) -> AttributedString {
         var result = AttributedString()
         let lines = source.components(separatedBy: "\n")
 
         for (index, line) in lines.enumerated() {
-            var attributed: AttributedString
-
-            if line.hasPrefix("###### ") {
-                attributed = inlineMarkdown(String(line.dropFirst(7)))
-                attributed.font = .system(.callout, weight: .bold)
-            } else if line.hasPrefix("##### ") {
-                attributed = inlineMarkdown(String(line.dropFirst(6)))
-                attributed.font = .system(.callout, weight: .bold)
-            } else if line.hasPrefix("#### ") {
-                attributed = inlineMarkdown(String(line.dropFirst(5)))
-                attributed.font = .system(.body, weight: .bold)
-            } else if line.hasPrefix("### ") {
-                attributed = inlineMarkdown(String(line.dropFirst(4)))
-                attributed.font = .system(.title3, weight: .semibold)
-            } else if line.hasPrefix("## ") {
-                attributed = inlineMarkdown(String(line.dropFirst(3)))
-                attributed.font = .system(.title2, weight: .semibold)
-            } else if line.hasPrefix("# ") {
-                attributed = inlineMarkdown(String(line.dropFirst(2)))
-                attributed.font = .system(.title, weight: .bold)
-            } else if line.hasPrefix("- ") || line.hasPrefix("* ") {
-                let content = String(line.dropFirst(2))
-                attributed = AttributedString("  \u{2022} ") + inlineMarkdown(content)
-            } else if let match = line.range(of: #"^(\d+)\. "#, options: .regularExpression) {
-                let number = line[line.startIndex..<line.index(before: match.upperBound)]
-                    .trimmingCharacters(in: .whitespaces.union(.punctuationCharacters))
-                let content = String(line[match.upperBound...])
-                attributed = AttributedString("  \(number). ") + inlineMarkdown(content)
-            } else {
-                attributed = inlineMarkdown(line)
-            }
-
-            result += attributed
+            result += renderLine(line)
             if index < lines.count - 1 {
                 result += AttributedString("\n")
             }
