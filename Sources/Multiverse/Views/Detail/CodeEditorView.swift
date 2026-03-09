@@ -58,7 +58,7 @@ struct CodeEditorView: NSViewRepresentable {
         )
 
         // Change marker overlay (positioned at right edge)
-        let markerView = ChangeMarkerOverlay(annotations: annotations, textView: textView)
+        let markerView = ChangeMarkerOverlay(annotations: annotations, textView: textView, scrollView: scrollView)
 
         container.addSubview(gutterView)
         container.addSubview(scrollView)
@@ -656,14 +656,29 @@ class ChangeMarkerOverlay: NSView {
     var findMatchLines: Set<Int> = []
     var selectionMatchLines: Set<Int> = []
     weak var textView: GutterTextView?
+    weak var scrollView: NSScrollView?
 
     override var isFlipped: Bool { true }
 
-    init(annotations: LineAnnotations, textView: GutterTextView) {
+    init(annotations: LineAnnotations, textView: GutterTextView, scrollView: NSScrollView) {
         self.annotations = annotations
         self.textView = textView
+        self.scrollView = scrollView
         super.init(frame: .zero)
         self.wantsLayer = true
+
+        // Redraw when scroller layout changes (e.g., find bar appears/disappears)
+        if let scroller = scrollView.verticalScroller {
+            scroller.postsFrameChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(scrollerFrameChanged(_:)),
+                name: NSView.frameDidChangeNotification, object: scroller
+            )
+        }
+    }
+
+    @objc private func scrollerFrameChanged(_ notification: Notification) {
+        needsDisplay = true
     }
 
     required init?(coder: NSCoder) {
@@ -675,7 +690,19 @@ class ChangeMarkerOverlay: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let textView = textView else { return }
         let totalLines = max(1, textView.string.components(separatedBy: "\n").count)
-        let height = bounds.height
+
+        // Determine the Y range that matches the scrollbar's actual track area
+        var trackMinY: CGFloat = 0
+        var trackHeight: CGFloat = bounds.height
+
+        if let scroller = scrollView?.verticalScroller {
+            let knobSlot = scroller.rect(for: .knobSlot)
+            if let sv = scrollView {
+                let converted = sv.convert(knobSlot, from: scroller)
+                trackMinY = converted.origin.y
+                trackHeight = converted.size.height
+            }
+        }
 
         // Track background
         NSColor.white.withAlphaComponent(0.03).setFill()
@@ -696,8 +723,8 @@ class ChangeMarkerOverlay: NSView {
                 i += count
             }
             for region in regions {
-                let y = (CGFloat(region.start - 1) / CGFloat(totalLines)) * height
-                let h = max(2, (CGFloat(region.count) / CGFloat(totalLines)) * height)
+                let y = trackMinY + (CGFloat(region.start - 1) / CGFloat(totalLines)) * trackHeight
+                let h = max(2, (CGFloat(region.count) / CGFloat(totalLines)) * trackHeight)
                 let markerRect = NSRect(x: 0, y: y, width: bounds.width, height: h)
                 NSColor.white.withAlphaComponent(0.45).setFill()
                 markerRect.fill()
@@ -719,8 +746,8 @@ class ChangeMarkerOverlay: NSView {
                 i += count
             }
             for region in regions {
-                let y = (CGFloat(region.start - 1) / CGFloat(totalLines)) * height
-                let h = max(2, (CGFloat(region.count) / CGFloat(totalLines)) * height)
+                let y = trackMinY + (CGFloat(region.start - 1) / CGFloat(totalLines)) * trackHeight
+                let h = max(2, (CGFloat(region.count) / CGFloat(totalLines)) * trackHeight)
                 let markerRect = NSRect(x: 0, y: y, width: bounds.width, height: h)
                 NSColor.systemOrange.withAlphaComponent(0.7).setFill()
                 markerRect.fill()
@@ -747,8 +774,8 @@ class ChangeMarkerOverlay: NSView {
             }
 
             for region in regions {
-                let y = (CGFloat(region.start - 1) / CGFloat(totalLines)) * height
-                let h = max(2, (CGFloat(region.count) / CGFloat(totalLines)) * height)
+                let y = trackMinY + (CGFloat(region.start - 1) / CGFloat(totalLines)) * trackHeight
+                let h = max(2, (CGFloat(region.count) / CGFloat(totalLines)) * trackHeight)
                 let markerRect = NSRect(x: 0, y: y, width: bounds.width, height: h)
                 region.color.withAlphaComponent(0.8).setFill()
                 markerRect.fill()
@@ -758,7 +785,7 @@ class ChangeMarkerOverlay: NSView {
         // Draw markers for deletions (small red dots)
         for deletedLine in annotations.deleted {
             let linePos = max(0, deletedLine)
-            let y = (CGFloat(linePos) / CGFloat(totalLines)) * height
+            let y = trackMinY + (CGFloat(linePos) / CGFloat(totalLines)) * trackHeight
             let markerRect = NSRect(x: 1, y: y, width: bounds.width - 2, height: 2)
             NSColor.systemRed.withAlphaComponent(0.8).setFill()
             markerRect.fill()
