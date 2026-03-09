@@ -174,6 +174,10 @@ struct CodeEditorView: NSViewRepresentable {
         var findBarDismissalTimer: Timer?
         var lastSearchText: String = ""
 
+        // Selection occurrence highlighting
+        var selectionHighlightTask: DispatchWorkItem?
+        var selectionHighlightRanges: [NSRange] = []
+
         init(textBinding: Binding<String>) {
             self.textBinding = textBinding
         }
@@ -342,6 +346,107 @@ struct CodeEditorView: NSViewRepresentable {
             if let layoutManager = textView?.layoutManager, let text = textView?.string {
                 layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: NSRange(location: 0, length: (text as NSString).length))
             }
+        }
+
+        // MARK: - Selection Occurrence Highlighting
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            selectionHighlightTask?.cancel()
+            let task = DispatchWorkItem { [weak self] in
+                self?.updateSelectionHighlights()
+            }
+            selectionHighlightTask = task
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: task)
+        }
+
+        @MainActor private func updateSelectionHighlights() {
+            guard let textView = textView,
+                  let markerView = markerView,
+                  let layoutManager = textView.layoutManager else { return }
+
+            // Clear previous selection highlights
+            clearSelectionHighlights()
+
+            // Don't highlight if find bar is active
+            if findSearchField?.window != nil { return }
+
+            // Get selected text
+            let selectedRange = textView.selectedRange()
+            guard selectedRange.length > 0 else { return }
+
+            let text = textView.string as NSString
+            let selectedText = text.substring(with: selectedRange)
+
+            // Must be a single word (no whitespace/newlines), at least 2 chars
+            let trimmed = selectedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.count >= 2, trimmed == selectedText, !selectedText.contains("\n") else { return }
+
+            // Build line start offsets for line number lookup
+            var lineStarts = [0]
+            let raw = textView.string
+            for (i, char) in raw.enumerated() {
+                if char == "\n" { lineStarts.append(i + 1) }
+            }
+
+            // Find all whole-word occurrences (case-sensitive)
+            var matchLines = Set<Int>()
+            var matchRanges: [NSRange] = []
+
+            var searchRange = NSRange(location: 0, length: text.length)
+            while searchRange.location < text.length {
+                let found = text.range(of: selectedText, options: [], range: searchRange)
+                if found.location == NSNotFound { break }
+
+                // Check word boundaries
+                let before = found.location > 0 ? text.character(at: found.location - 1) : 0x20
+                let after = (found.location + found.length < text.length) ? text.character(at: found.location + found.length) : 0x20
+                let isWordBoundaryBefore = !CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_")).contains(UnicodeScalar(before)!)
+                let isWordBoundaryAfter = !CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_")).contains(UnicodeScalar(after)!)
+
+                if isWordBoundaryBefore && isWordBoundaryAfter {
+                    // Binary search for line number (always include in markers)
+                    var lo = 0, hi = lineStarts.count - 1
+                    while lo < hi {
+                        let mid = (lo + hi + 1) / 2
+                        if lineStarts[mid] <= found.location { lo = mid } else { hi = mid - 1 }
+                    }
+                    matchLines.insert(lo + 1)
+
+                    // Only highlight non-selected occurrences (selected text is already visually distinct)
+                    if found.location != selectedRange.location || found.length != selectedRange.length {
+                        matchRanges.append(found)
+                    }
+                }
+
+                searchRange.location = found.location + 1
+                searchRange.length = text.length - searchRange.location
+            }
+
+            // Apply subtle background highlights
+            let highlightColor = NSColor.white.withAlphaComponent(0.15)
+            for range in matchRanges {
+                layoutManager.addTemporaryAttribute(.backgroundColor, value: highlightColor, forCharacterRange: range)
+            }
+            selectionHighlightRanges = matchRanges
+
+            markerView.selectionMatchLines = matchLines
+            markerView.needsDisplay = true
+        }
+
+        @MainActor private func clearSelectionHighlights() {
+            guard let textView = textView,
+                  let layoutManager = textView.layoutManager,
+                  let markerView = markerView else { return }
+
+            for range in selectionHighlightRanges {
+                // Only remove if still within text bounds
+                if range.location + range.length <= (textView.string as NSString).length {
+                    layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: range)
+                }
+            }
+            selectionHighlightRanges = []
+            markerView.selectionMatchLines = []
+            markerView.needsDisplay = true
         }
     }
 }
@@ -549,6 +654,7 @@ class CodeEditorContainerView: NSView {
 class ChangeMarkerOverlay: NSView {
     var annotations: LineAnnotations
     var findMatchLines: Set<Int> = []
+    var selectionMatchLines: Set<Int> = []
     weak var textView: GutterTextView?
 
     override var isFlipped: Bool { true }
@@ -574,6 +680,29 @@ class ChangeMarkerOverlay: NSView {
         // Track background
         NSColor.white.withAlphaComponent(0.03).setFill()
         bounds.fill()
+
+        // Draw selection occurrence markers (behind everything else)
+        if !selectionMatchLines.isEmpty {
+            let sorted = selectionMatchLines.sorted()
+            var regions: [(start: Int, count: Int)] = []
+            var i = 0
+            while i < sorted.count {
+                let start = sorted[i]
+                var count = 1
+                while i + count < sorted.count && sorted[i + count] == start + count {
+                    count += 1
+                }
+                regions.append((start, count))
+                i += count
+            }
+            for region in regions {
+                let y = (CGFloat(region.start - 1) / CGFloat(totalLines)) * height
+                let h = max(2, (CGFloat(region.count) / CGFloat(totalLines)) * height)
+                let markerRect = NSRect(x: 0, y: y, width: bounds.width, height: h)
+                NSColor.white.withAlphaComponent(0.45).setFill()
+                markerRect.fill()
+            }
+        }
 
         // Draw find match markers (behind git markers)
         if !findMatchLines.isEmpty {
