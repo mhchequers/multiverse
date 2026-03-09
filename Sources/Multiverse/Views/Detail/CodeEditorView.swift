@@ -46,6 +46,9 @@ struct CodeEditorView: NSViewRepresentable {
         textView.string = text
         textView.annotations = annotations
         textView.saveAction = onSave
+        textView.onFindBarTriggered = { [weak coordinator = context.coordinator] in
+            coordinator?.attachToFindBar()
+        }
 
         scrollView.documentView = textView
 
@@ -165,8 +168,21 @@ struct CodeEditorView: NSViewRepresentable {
         var onScrollOffsetChanged: ((CGPoint) -> Void)?
         var isRestoringScroll = false
 
+        // Find bar observation
+        var findSearchField: NSSearchField?
+        var findSearchFieldObserver: Any?
+        var findBarDismissalTimer: Timer?
+        var lastSearchText: String = ""
+
         init(textBinding: Binding<String>) {
             self.textBinding = textBinding
+        }
+
+        deinit {
+            if let observer = findSearchFieldObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            findBarDismissalTimer?.invalidate()
         }
 
         func textDidChange(_ notification: Notification) {
@@ -181,6 +197,12 @@ struct CodeEditorView: NSViewRepresentable {
             }
             highlightTask = task
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: task)
+
+            // Re-search if find bar is active
+            if findSearchField?.window != nil {
+                lastSearchText = ""
+                searchTextDidChange()
+            }
         }
 
         @MainActor @objc func clipViewFrameChanged(_ notification: Notification) {
@@ -193,6 +215,116 @@ struct CodeEditorView: NSViewRepresentable {
                   let scrollView = scrollView else { return }
             onScrollOffsetChanged?(scrollView.contentView.bounds.origin)
         }
+
+        // MARK: - Find Bar Observation
+
+        @MainActor func attachToFindBar() {
+            if findSearchField?.window != nil { return }
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let scrollView = self.scrollView else { return }
+                guard let searchField = self.findSearchFieldIn(scrollView) else { return }
+                self.findSearchField = searchField
+
+                self.findSearchFieldObserver = NotificationCenter.default.addObserver(
+                    forName: NSControl.textDidChangeNotification,
+                    object: searchField,
+                    queue: .main
+                ) { [weak self] _ in
+                    DispatchQueue.main.async {
+                        self?.searchTextDidChange()
+                    }
+                }
+
+                self.searchTextDidChange()
+
+                self.findBarDismissalTimer?.invalidate()
+                self.findBarDismissalTimer = Timer.scheduledTimer(
+                    withTimeInterval: 0.5, repeats: true
+                ) { [weak self] _ in
+                    DispatchQueue.main.async {
+                        self?.checkFindBarDismissed()
+                    }
+                }
+            }
+        }
+
+        @MainActor private func findSearchFieldIn(_ view: NSView) -> NSSearchField? {
+            for subview in view.subviews {
+                if let sf = subview as? NSSearchField { return sf }
+                if let found = findSearchFieldIn(subview) { return found }
+            }
+            return nil
+        }
+
+        @MainActor func searchTextDidChange() {
+            guard let searchField = findSearchField,
+                  let textView = textView,
+                  let markerView = markerView else { return }
+
+            let searchText = searchField.stringValue
+            guard searchText != lastSearchText else { return }
+            lastSearchText = searchText
+
+            guard !searchText.isEmpty else {
+                markerView.findMatchLines = []
+                markerView.needsDisplay = true
+                return
+            }
+
+            let text = textView.string as NSString
+            var matchLines = Set<Int>()
+
+            // Pre-build line start offsets for efficient line number lookup
+            var lineStarts = [0]
+            let raw = textView.string
+            for (i, char) in raw.enumerated() {
+                if char == "\n" { lineStarts.append(i + 1) }
+            }
+
+            var searchRange = NSRange(location: 0, length: text.length)
+            while searchRange.location < text.length {
+                let found = text.range(of: searchText, options: .caseInsensitive, range: searchRange)
+                if found.location == NSNotFound { break }
+
+                // Binary search for line number
+                var lo = 0, hi = lineStarts.count - 1
+                while lo < hi {
+                    let mid = (lo + hi + 1) / 2
+                    if lineStarts[mid] <= found.location { lo = mid } else { hi = mid - 1 }
+                }
+                matchLines.insert(lo + 1) // 1-based
+
+                searchRange.location = found.location + 1
+                searchRange.length = text.length - searchRange.location
+            }
+
+            markerView.findMatchLines = matchLines
+            markerView.needsDisplay = true
+        }
+
+        @MainActor func checkFindBarDismissed() {
+            guard let scrollView = scrollView else {
+                clearFindMatchMarkers()
+                return
+            }
+            if !scrollView.isFindBarVisible {
+                clearFindMatchMarkers()
+            }
+        }
+
+        @MainActor func clearFindMatchMarkers() {
+            if let observer = findSearchFieldObserver {
+                NotificationCenter.default.removeObserver(observer)
+                findSearchFieldObserver = nil
+            }
+            findBarDismissalTimer?.invalidate()
+            findBarDismissalTimer = nil
+            findSearchField = nil
+            lastSearchText = ""
+            markerView?.findMatchLines = []
+            markerView?.needsDisplay = true
+        }
     }
 }
 
@@ -201,6 +333,7 @@ struct CodeEditorView: NSViewRepresentable {
 class GutterTextView: NSTextView {
     var annotations = LineAnnotations()
     var saveAction: (() -> Void)?
+    var onFindBarTriggered: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "s" {
@@ -216,6 +349,7 @@ class GutterTextView: NSTextView {
             switch (flags, chars) {
             case (.command, "f"):
                 triggerFindAction(.showFindInterface)
+                onFindBarTriggered?()
                 return true
             case (.command, "g"):
                 triggerFindAction(.nextMatch)
@@ -396,6 +530,7 @@ class CodeEditorContainerView: NSView {
 
 class ChangeMarkerOverlay: NSView {
     var annotations: LineAnnotations
+    var findMatchLines: Set<Int> = []
     weak var textView: GutterTextView?
 
     init(annotations: LineAnnotations, textView: GutterTextView) {
@@ -419,6 +554,29 @@ class ChangeMarkerOverlay: NSView {
         // Track background
         NSColor.white.withAlphaComponent(0.03).setFill()
         bounds.fill()
+
+        // Draw find match markers (behind git markers)
+        if !findMatchLines.isEmpty {
+            let sorted = findMatchLines.sorted()
+            var regions: [(start: Int, count: Int)] = []
+            var i = 0
+            while i < sorted.count {
+                let start = sorted[i]
+                var count = 1
+                while i + count < sorted.count && sorted[i + count] == start + count {
+                    count += 1
+                }
+                regions.append((start, count))
+                i += count
+            }
+            for region in regions {
+                let y = (CGFloat(region.start - 1) / CGFloat(totalLines)) * height
+                let h = max(2, (CGFloat(region.count) / CGFloat(totalLines)) * height)
+                let markerRect = NSRect(x: 0, y: y, width: bounds.width, height: h)
+                NSColor.systemOrange.withAlphaComponent(0.7).setFill()
+                markerRect.fill()
+            }
+        }
 
         // Draw markers for added/modified
         let allChanged = annotations.added.union(annotations.modified)
