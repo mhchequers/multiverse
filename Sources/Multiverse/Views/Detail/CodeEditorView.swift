@@ -40,6 +40,8 @@ struct CodeEditorView: NSViewRepresentable {
         textView.maxSize = NSSize(width: largeSize, height: largeSize)
         textView.minSize = NSSize(width: 0, height: 0)
 
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
         textView.delegate = context.coordinator
         textView.string = text
         textView.annotations = annotations
@@ -206,6 +208,35 @@ class GutterTextView: NSTextView {
             return
         }
         super.keyDown(with: event)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if let chars = event.charactersIgnoringModifiers {
+            switch (flags, chars) {
+            case (.command, "f"):
+                triggerFindAction(.showFindInterface)
+                return true
+            case (.command, "g"):
+                triggerFindAction(.nextMatch)
+                return true
+            case ([.command, .shift], "G"), ([.command, .shift], "g"):
+                triggerFindAction(.previousMatch)
+                return true
+            case (.command, "e"):
+                triggerFindAction(.setSearchString)
+                return true
+            default:
+                break
+            }
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    private func triggerFindAction(_ action: NSTextFinder.Action) {
+        let sender = NSMenuItem()
+        sender.tag = action.rawValue
+        performTextFinderAction(sender)
     }
 }
 
