@@ -551,6 +551,8 @@ class ChangeMarkerOverlay: NSView {
     var findMatchLines: Set<Int> = []
     weak var textView: GutterTextView?
 
+    override var isFlipped: Bool { true }
+
     init(annotations: LineAnnotations, textView: GutterTextView) {
         self.annotations = annotations
         self.textView = textView
