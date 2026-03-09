@@ -260,11 +260,18 @@ struct CodeEditorView: NSViewRepresentable {
         @MainActor func searchTextDidChange() {
             guard let searchField = findSearchField,
                   let textView = textView,
-                  let markerView = markerView else { return }
+                  let markerView = markerView,
+                  let layoutManager = textView.layoutManager else { return }
 
             let searchText = searchField.stringValue
             guard searchText != lastSearchText else { return }
             lastSearchText = searchText
+
+            let text = textView.string as NSString
+            let fullRange = NSRange(location: 0, length: text.length)
+
+            // Clear previous highlights
+            layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: fullRange)
 
             guard !searchText.isEmpty else {
                 markerView.findMatchLines = []
@@ -272,8 +279,8 @@ struct CodeEditorView: NSViewRepresentable {
                 return
             }
 
-            let text = textView.string as NSString
             var matchLines = Set<Int>()
+            var matchRanges: [NSRange] = []
 
             // Pre-build line start offsets for efficient line number lookup
             var lineStarts = [0]
@@ -287,6 +294,8 @@ struct CodeEditorView: NSViewRepresentable {
                 let found = text.range(of: searchText, options: .caseInsensitive, range: searchRange)
                 if found.location == NSNotFound { break }
 
+                matchRanges.append(found)
+
                 // Binary search for line number
                 var lo = 0, hi = lineStarts.count - 1
                 while lo < hi {
@@ -297,6 +306,12 @@ struct CodeEditorView: NSViewRepresentable {
 
                 searchRange.location = found.location + 1
                 searchRange.length = text.length - searchRange.location
+            }
+
+            // Apply text highlights
+            let highlightColor = NSColor.systemYellow.withAlphaComponent(0.3)
+            for range in matchRanges {
+                layoutManager.addTemporaryAttribute(.backgroundColor, value: highlightColor, forCharacterRange: range)
             }
 
             markerView.findMatchLines = matchLines
@@ -324,6 +339,9 @@ struct CodeEditorView: NSViewRepresentable {
             lastSearchText = ""
             markerView?.findMatchLines = []
             markerView?.needsDisplay = true
+            if let layoutManager = textView?.layoutManager, let text = textView?.string {
+                layoutManager.removeTemporaryAttribute(.backgroundColor, forCharacterRange: NSRange(location: 0, length: (text as NSString).length))
+            }
         }
     }
 }
