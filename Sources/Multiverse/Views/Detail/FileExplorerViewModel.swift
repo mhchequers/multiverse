@@ -93,6 +93,17 @@ final class FileExplorerViewModel {
     var isLoading = false
     var error: String?
 
+    @ObservationIgnored var scrollOffsets: [UUID: CGPoint] = [:]
+
+    var currentScrollOffset: CGPoint {
+        guard let id = selectedTabId else { return .zero }
+        return scrollOffsets[id] ?? .zero
+    }
+
+    func setScrollOffset(_ offset: CGPoint, for tabId: UUID) {
+        scrollOffsets[tabId] = offset
+    }
+
     var selectedTab: EditorTab? {
         guard let id = selectedTabId else { return nil }
         return tabs.first { $0.id == id }
@@ -243,6 +254,7 @@ final class FileExplorerViewModel {
     func closeTab(_ tabId: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == tabId }) else { return }
         if tabs[index].isDirty { saveTab(at: index) }
+        scrollOffsets.removeValue(forKey: tabId)
         let wasSelected = selectedTabId == tabId
         tabs.remove(at: index)
         if wasSelected {

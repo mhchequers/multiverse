@@ -6,6 +6,8 @@ struct CodeEditorView: NSViewRepresentable {
     let filename: String
     let annotations: LineAnnotations
     let onSave: () -> Void
+    let initialScrollOffset: CGPoint
+    let onScrollOffsetChanged: (CGPoint) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(textBinding: $text)
@@ -68,18 +70,29 @@ struct CodeEditorView: NSViewRepresentable {
 
         // Observe clip view frame changes so we recalculate text view width on resize
         scrollView.contentView.postsFrameChangedNotifications = true
+        scrollView.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
             context.coordinator,
             selector: #selector(Coordinator.clipViewFrameChanged(_:)),
             name: NSView.frameDidChangeNotification,
             object: scrollView.contentView
         )
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.scrollViewDidScroll(_:)),
+            name: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView
+        )
+        context.coordinator.onScrollOffsetChanged = onScrollOffsetChanged
 
         // Defer frame adjustment until after AppKit completes layout
+        let restoreOffset = initialScrollOffset
         DispatchQueue.main.async {
             Self.adjustTextViewFrame(textView, in: scrollView)
-            scrollView.contentView.scroll(to: .zero)
+            context.coordinator.isRestoringScroll = true
+            scrollView.contentView.scroll(to: restoreOffset)
             scrollView.reflectScrolledClipView(scrollView.contentView)
+            context.coordinator.isRestoringScroll = false
         }
 
         return container
@@ -88,6 +101,7 @@ struct CodeEditorView: NSViewRepresentable {
     func updateNSView(_ container: NSView, context: Context) {
         context.coordinator.textBinding = $text
         context.coordinator.filename = filename
+        context.coordinator.onScrollOffsetChanged = onScrollOffsetChanged
         guard let textView = context.coordinator.textView,
               let scrollView = context.coordinator.scrollView else { return }
 
@@ -146,6 +160,8 @@ struct CodeEditorView: NSViewRepresentable {
         var gutterView: LineNumberGutterView?
         var markerView: ChangeMarkerOverlay?
         var highlightTask: DispatchWorkItem?
+        var onScrollOffsetChanged: ((CGPoint) -> Void)?
+        var isRestoringScroll = false
 
         init(textBinding: Binding<String>) {
             self.textBinding = textBinding
@@ -168,6 +184,12 @@ struct CodeEditorView: NSViewRepresentable {
         @MainActor @objc func clipViewFrameChanged(_ notification: Notification) {
             guard let textView = textView, let scrollView = scrollView else { return }
             CodeEditorView.adjustTextViewFrame(textView, in: scrollView)
+        }
+
+        @MainActor @objc func scrollViewDidScroll(_ notification: Notification) {
+            guard !isRestoringScroll,
+                  let scrollView = scrollView else { return }
+            onScrollOffsetChanged?(scrollView.contentView.bounds.origin)
         }
     }
 }

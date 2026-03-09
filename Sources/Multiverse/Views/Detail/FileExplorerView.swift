@@ -207,7 +207,13 @@ struct FileExplorerView: View {
                             ),
                             filename: vm.currentFilename,
                             annotations: vm.currentAnnotations,
-                            onSave: { vm.saveCurrentTab() }
+                            onSave: { vm.saveCurrentTab() },
+                            initialScrollOffset: vm.currentScrollOffset,
+                            onScrollOffsetChanged: { offset in
+                                if let tabId = vm.selectedTabId {
+                                    vm.setScrollOffset(offset, for: tabId)
+                                }
+                            }
                         )
                         .id(vm.selectedTabId)
                     }
