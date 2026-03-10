@@ -75,7 +75,7 @@ final class GitService {
     // MARK: - Status & Diff
 
     func status(in directory: String) async throws -> [FileChange] {
-        let result = try await runner.git("status", "--porcelain=v1", in: directory)
+        let result = try await runner.git("status", "--porcelain=v1", "--untracked-files=all", in: directory)
         guard result.succeeded else { throw GitError.commandFailed(result.stderr) }
         return FileChange.parse(porcelainOutput: result.stdout)
     }

@@ -75,6 +75,9 @@ struct FileChange: Identifiable, Equatable {
                 ? String(rawPath.split(separator: " -> ").last ?? Substring(rawPath))
                 : rawPath
 
+            // Skip directory entries (nested git repos) — matches VS Code behavior
+            guard !displayPath.hasSuffix("/") else { continue }
+
             // Staged change (index column)
             if indexChar != " " && indexChar != "?" {
                 if let status = ChangeStatus(rawValue: String(indexChar)) {
