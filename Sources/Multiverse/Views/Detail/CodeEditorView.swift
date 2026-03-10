@@ -209,6 +209,30 @@ struct CodeEditorView: NSViewRepresentable {
             }
         }
 
+        func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
+            guard let replacement = replacementString, replacement == "\n" else { return true }
+
+            let text = textView.string as NSString
+            let lineRange = text.lineRange(for: NSRange(location: affectedCharRange.location, length: 0))
+            let line = text.substring(with: lineRange)
+
+            // Extract leading whitespace from the current line
+            var indent = ""
+            for char in line {
+                if char == " " || char == "\t" {
+                    indent.append(char)
+                } else {
+                    break
+                }
+            }
+
+            guard !indent.isEmpty else { return true }
+
+            let indented = "\n" + indent
+            textView.insertText(indented, replacementRange: affectedCharRange)
+            return false
+        }
+
         @MainActor @objc func clipViewFrameChanged(_ notification: Notification) {
             guard let textView = textView, let scrollView = scrollView else { return }
             CodeEditorView.adjustTextViewFrame(textView, in: scrollView)
@@ -457,6 +481,10 @@ class GutterTextView: NSTextView {
     var annotations = LineAnnotations()
     var saveAction: (() -> Void)?
     var onFindBarTriggered: (() -> Void)?
+
+    override func insertTab(_ sender: Any?) {
+        insertText("    ", replacementRange: selectedRange())
+    }
 
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "s" {
