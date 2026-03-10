@@ -5,8 +5,9 @@ struct FileNode: Identifiable, Hashable {
     let name: String
     let path: String  // relative to repo root
     let isDirectory: Bool
-    var children: [FileNode]
+    var children: [FileNode]?  // nil = not yet loaded (lazy), [] = loaded but empty
     var gitStatus: ChangeStatus?
+    var isGitIgnored: Bool = false
 
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
@@ -14,6 +15,9 @@ struct FileNode: Identifiable, Hashable {
 
     static func == (lhs: FileNode, rhs: FileNode) -> Bool {
         lhs.id == rhs.id
+        && lhs.children?.count == rhs.children?.count
+        && lhs.gitStatus == rhs.gitStatus
+        && lhs.isGitIgnored == rhs.isGitIgnored
     }
 }
 
@@ -89,6 +93,21 @@ final class FileExplorerViewModel {
     var tabs: [EditorTab] = []
     var selectedTabId: UUID?
     var expandedDirectories: Set<String> = []
+
+    var visibleNodes: [(node: FileNode, depth: Int)] {
+        var result: [(node: FileNode, depth: Int)] = []
+        func walk(_ nodes: [FileNode], depth: Int) {
+            for node in nodes {
+                result.append((node: node, depth: depth))
+                if node.isDirectory && expandedDirectories.contains(node.id),
+                   let children = node.children {
+                    walk(children, depth: depth + 1)
+                }
+            }
+        }
+        walk(rootNodes, depth: 0)
+        return result
+    }
     var revealTargetNodeId: String?
     var isLoading = false
     var error: String?
@@ -184,7 +203,7 @@ final class FileExplorerViewModel {
         do {
             let files = try await gitService.listFiles(in: directory)
             let statusMap = try await buildStatusMap()
-            rootNodes = buildTree(from: files, statusMap: statusMap)
+            rootNodes = buildTree(from: files, statusMap: statusMap, basePath: directory)
         } catch {
             self.error = error.localizedDescription
         }
@@ -206,7 +225,8 @@ final class FileExplorerViewModel {
             path: relativePath,
             isDirectory: false,
             children: [],
-            gitStatus: nil
+            gitStatus: nil,
+            isGitIgnored: false
         )
         await openFile(node)
         revealFileInTree(relativePath)
@@ -330,7 +350,7 @@ final class FileExplorerViewModel {
         return map
     }
 
-    private func buildTree(from files: [String], statusMap: [String: ChangeStatus], prefix: String = "") -> [FileNode] {
+    private func buildTree(from files: [String], statusMap: [String: ChangeStatus], prefix: String = "", basePath: String) -> [FileNode] {
         // Group files by top-level directory/file
         var directoryContents: [String: [String]] = [:]  // dir -> remaining paths
         var topLevelFiles: [String] = []
@@ -345,9 +365,11 @@ final class FileExplorerViewModel {
         }
 
         var nodes: [FileNode] = []
+        var knownEntries = Set<String>()
 
         // Directories first, sorted
         for dirName in directoryContents.keys.sorted() {
+            knownEntries.insert(dirName)
             let fullPath = prefix + dirName
 
             // Determine if directory has any changed files
@@ -361,7 +383,8 @@ final class FileExplorerViewModel {
                         result[remaining] = pair.value
                     }
                 },
-                prefix: fullPath + "/"
+                prefix: fullPath + "/",
+                basePath: (basePath as NSString).appendingPathComponent(dirName)
             )
 
             nodes.append(FileNode(
@@ -376,6 +399,7 @@ final class FileExplorerViewModel {
 
         // Then files, sorted
         for fileName in topLevelFiles.sorted() {
+            knownEntries.insert(fileName)
             let fullPath = prefix + fileName
             nodes.append(FileNode(
                 id: fullPath,
@@ -387,7 +411,84 @@ final class FileExplorerViewModel {
             ))
         }
 
-        return nodes
+        // Augment with filesystem-only entries (gitignored files/directories)
+        let fm = FileManager.default
+        if let fsEntries = try? fm.contentsOfDirectory(atPath: basePath) {
+            for entry in fsEntries.sorted() where !knownEntries.contains(entry) && entry != ".git" {
+                let entryAbsPath = (basePath as NSString).appendingPathComponent(entry)
+                var isDir: ObjCBool = false
+                fm.fileExists(atPath: entryAbsPath, isDirectory: &isDir)
+                let fullPath = prefix + entry
+                nodes.append(FileNode(
+                    id: fullPath,
+                    name: entry,
+                    path: fullPath,
+                    isDirectory: isDir.boolValue,
+                    children: isDir.boolValue ? nil : [],
+                    gitStatus: nil,
+                    isGitIgnored: true
+                ))
+            }
+        }
+
+        // Sort: directories first, then alphabetical
+        return nodes.sorted { a, b in
+            if a.isDirectory != b.isDirectory { return a.isDirectory && !b.isDirectory }
+            return a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
+    }
+
+    // MARK: - Lazy Loading for Gitignored Directories
+
+    func loadChildren(for node: FileNode) {
+        guard node.isDirectory, node.children == nil else { return }
+
+        let fm = FileManager.default
+        let fullDirPath = (directory as NSString).appendingPathComponent(node.path)
+
+        guard let entries = try? fm.contentsOfDirectory(atPath: fullDirPath) else {
+            rootNodes = setNodeChildren(path: node.path, children: [], in: rootNodes)
+            return
+        }
+
+        var children: [FileNode] = []
+        for entry in entries.sorted() {
+            let entryAbsPath = (fullDirPath as NSString).appendingPathComponent(entry)
+            var isDir: ObjCBool = false
+            fm.fileExists(atPath: entryAbsPath, isDirectory: &isDir)
+            let childPath = node.path + "/" + entry
+            children.append(FileNode(
+                id: childPath,
+                name: entry,
+                path: childPath,
+                isDirectory: isDir.boolValue,
+                children: isDir.boolValue ? nil : [],
+                gitStatus: nil,
+                isGitIgnored: true
+            ))
+        }
+
+        // Sort: directories first, then alphabetical
+        children.sort { a, b in
+            if a.isDirectory != b.isDirectory { return a.isDirectory && !b.isDirectory }
+            return a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
+
+        rootNodes = setNodeChildren(path: node.path, children: children, in: rootNodes)
+    }
+
+    private func setNodeChildren(path: String, children: [FileNode], in nodes: [FileNode]) -> [FileNode] {
+        var result = nodes
+        for i in result.indices {
+            if result[i].path == path {
+                result[i].children = children
+                return result
+            }
+            if result[i].isDirectory, let sub = result[i].children {
+                result[i].children = setNodeChildren(path: path, children: children, in: sub)
+            }
+        }
+        return result
     }
 
     // MARK: - Diff Parsing (reused from GitChangesViewModel)
