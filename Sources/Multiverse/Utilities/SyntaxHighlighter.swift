@@ -7,6 +7,7 @@ enum SyntaxHighlighter {
     private static let highlighter: Highlighter? = {
         let h = Highlighter()
         h?.setTheme("vs2015")
+        h?.ignoreIllegals = true
         return h
     }()
 
