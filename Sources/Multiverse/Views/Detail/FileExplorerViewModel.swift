@@ -316,19 +316,11 @@ final class FileExplorerViewModel {
     }
 
     private func refreshOpenFiles() async {
-        // 1. Check for file list changes (new/deleted files)
+        // Always rebuild tree so filesystem scan picks up empty/gitignored directories
         let freshFiles = (try? await gitService.listFiles(in: directory)) ?? []
-        if freshFiles != cachedFilePaths {
-            // File list changed — full tree rebuild (includes status)
-            cachedFilePaths = freshFiles
-            let statusMap = (try? await buildStatusMap()) ?? [:]
-            rootNodes = buildTree(from: freshFiles, statusMap: statusMap, basePath: directory)
-        } else {
-            // File list unchanged — lightweight status update only
-            if let statusMap = try? await buildStatusMap() {
-                rootNodes = applyStatus(statusMap, to: rootNodes)
-            }
-        }
+        cachedFilePaths = freshFiles
+        let statusMap = (try? await buildStatusMap()) ?? [:]
+        rootNodes = buildTree(from: freshFiles, statusMap: statusMap, basePath: directory)
 
         // 2. Refresh open tab content and annotations
         for index in tabs.indices {
@@ -354,21 +346,6 @@ final class FileExplorerViewModel {
                     tabs[index].annotations = newAnnotations
                 }
             }
-        }
-    }
-
-    private func applyStatus(_ statusMap: [String: ChangeStatus], to nodes: [FileNode]) -> [FileNode] {
-        nodes.map { node in
-            var updated = node
-            if node.isDirectory {
-                updated.gitStatus = statusMap.first(where: { $0.key.hasPrefix(node.path + "/") })?.value
-                if let children = node.children {
-                    updated.children = applyStatus(statusMap, to: children)
-                }
-            } else {
-                updated.gitStatus = statusMap[node.path]
-            }
-            return updated
         }
     }
 
