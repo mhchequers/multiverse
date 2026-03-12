@@ -405,7 +405,7 @@ final class FileExplorerViewModel {
     }
 
     private func saveTab(at index: Int) {
-        guard !tabs[index].isImage else { return }
+        guard !tabs[index].isImage, tabs[index].isDirty else { return }
         let tab = tabs[index]
         let fullPath = (directory as NSString).appendingPathComponent(tab.filePath)
         do {
