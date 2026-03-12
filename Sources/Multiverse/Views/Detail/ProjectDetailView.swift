@@ -97,14 +97,20 @@ struct ProjectDetailView: View {
                 return style
             }()
             attributed.mergeAttributes(container)
-        } else if line.hasPrefix("- ") || line.hasPrefix("* ") {
-            let content = String(line.dropFirst(2))
-            attributed = AttributedString("  \u{2022} ") + inlineMarkdown(content)
-        } else if let match = line.range(of: #"^(\d+)\. "#, options: .regularExpression) {
-            let number = line[line.startIndex..<line.index(before: match.upperBound)]
+        } else if let bulletMatch = line.range(of: #"^(\s*)[*\-] "#, options: .regularExpression) {
+            let leadingSpaces = line.prefix(while: { $0 == " " || $0 == "\t" })
+            let nestLevel = leadingSpaces.count / 2
+            let content = String(line[bulletMatch.upperBound...])
+            let indent = String(repeating: "    ", count: nestLevel)
+            attributed = AttributedString("\(indent)  \u{2022} ") + inlineMarkdown(content)
+        } else if let match = line.range(of: #"^\s*(\d+)\. "#, options: .regularExpression) {
+            let leadingSpaces = line.prefix(while: { $0 == " " || $0 == "\t" })
+            let nestLevel = leadingSpaces.count / 2
+            let number = String(line[leadingSpaces.endIndex..<line.index(before: match.upperBound)])
                 .trimmingCharacters(in: .whitespaces.union(.punctuationCharacters))
             let content = String(line[match.upperBound...])
-            attributed = AttributedString("  \(number). ") + inlineMarkdown(content)
+            let indent = String(repeating: "    ", count: nestLevel)
+            attributed = AttributedString("\(indent)  \(number). ") + inlineMarkdown(content)
         } else {
             attributed = inlineMarkdown(line)
         }
