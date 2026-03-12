@@ -34,12 +34,30 @@ struct FileExplorerView: View {
     var body: some View {
         Group {
             if let vm = viewModel {
-                HSplitView {
-                    fileTreePanel(vm: vm)
-                        .frame(minWidth: 200, idealWidth: 250, maxWidth: 400)
+                ZStack(alignment: .top) {
+                    HSplitView {
+                        fileTreePanel(vm: vm)
+                            .frame(minWidth: 200, idealWidth: 250, maxWidth: 400)
 
-                    editorPanel(vm: vm)
-                        .frame(minWidth: 300)
+                        editorPanel(vm: vm)
+                            .frame(minWidth: 300)
+                    }
+
+                    // Hidden button to capture Cmd+P when SwiftUI has focus
+                    Button("") { vm.showQuickOpen() }
+                        .keyboardShortcut("p", modifiers: .command)
+                        .frame(width: 0, height: 0)
+                        .opacity(0)
+
+                    if vm.quickOpenVisible {
+                        // Dismiss backdrop
+                        Color.black.opacity(0.001)
+                            .ignoresSafeArea()
+                            .onTapGesture { vm.dismissQuickOpen() }
+
+                        QuickOpenOverlay(vm: vm)
+                            .padding(.top, 50)
+                    }
                 }
             } else {
                 ContentUnavailableView(
@@ -207,6 +225,7 @@ struct FileExplorerView: View {
                             filename: vm.currentFilename,
                             annotations: vm.currentAnnotations,
                             onSave: { vm.saveCurrentTab() },
+                            onQuickOpen: { vm.showQuickOpen() },
                             initialScrollOffset: vm.currentScrollOffset,
                             onScrollOffsetChanged: { offset in
                                 if let tabId = vm.selectedTabId {

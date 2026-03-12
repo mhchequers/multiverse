@@ -112,6 +112,93 @@ final class FileExplorerViewModel {
     var isLoading = false
     var error: String?
 
+    // MARK: - Quick Open State
+    var quickOpenVisible = false
+    var quickOpenQuery = ""
+    var quickOpenSelectedIndex = 0
+    @ObservationIgnored var cachedFilePaths: [String] = []
+
+    var quickOpenResults: [QuickOpenResult] {
+        if quickOpenQuery.isEmpty {
+            // Show recently opened files (most recent first)
+            if !tabs.isEmpty {
+                return Array(tabs.reversed().prefix(20).map { tab in
+                    let dir = directoryPortion(of: tab.filePath)
+                    return QuickOpenResult(
+                        filePath: tab.filePath,
+                        filename: tab.filename,
+                        directory: dir,
+                        matchedIndices: [],
+                        score: 0
+                    )
+                })
+            }
+            // No tabs open — show first 20 files
+            return Array(cachedFilePaths.prefix(20).map { path in
+                let filename = (path as NSString).lastPathComponent
+                return QuickOpenResult(
+                    filePath: path,
+                    filename: filename,
+                    directory: directoryPortion(of: path),
+                    matchedIndices: [],
+                    score: 0
+                )
+            })
+        }
+
+        let query = quickOpenQuery
+        var scored: [QuickOpenResult] = []
+        for path in cachedFilePaths {
+            if let result = fuzzyMatch(query: query, path: path) {
+                scored.append(result)
+            }
+        }
+        scored.sort { a, b in
+            if a.score != b.score { return a.score > b.score }
+            return a.filePath.count < b.filePath.count
+        }
+        return Array(scored.prefix(20))
+    }
+
+    func showQuickOpen() {
+        quickOpenQuery = ""
+        quickOpenSelectedIndex = 0
+        quickOpenVisible = true
+        if cachedFilePaths.isEmpty {
+            Task {
+                cachedFilePaths = (try? await gitService.listFiles(in: directory)) ?? []
+            }
+        }
+    }
+
+    func dismissQuickOpen() {
+        quickOpenVisible = false
+        quickOpenQuery = ""
+    }
+
+    func quickOpenConfirmSelection() {
+        let results = quickOpenResults
+        guard quickOpenSelectedIndex >= 0, quickOpenSelectedIndex < results.count else {
+            dismissQuickOpen()
+            return
+        }
+        let selected = results[quickOpenSelectedIndex]
+        dismissQuickOpen()
+        Task { await openFileByPath(selected.filePath) }
+    }
+
+    func quickOpenMoveSelection(by delta: Int) {
+        let count = quickOpenResults.count
+        guard count > 0 else { return }
+        quickOpenSelectedIndex = max(0, min(count - 1, quickOpenSelectedIndex + delta))
+    }
+
+    private func directoryPortion(of filePath: String) -> String {
+        let components = filePath.split(separator: "/")
+        if components.count <= 1 { return "" }
+        return components.dropLast().joined(separator: "/")
+    }
+
     @ObservationIgnored var scrollOffsets: [UUID: CGPoint] = [:]
 
     var currentScrollOffset: CGPoint {
@@ -202,6 +289,7 @@ final class FileExplorerViewModel {
         error = nil
         do {
             let files = try await gitService.listFiles(in: directory)
+            cachedFilePaths = files
             let statusMap = try await buildStatusMap()
             rootNodes = buildTree(from: files, statusMap: statusMap, basePath: directory)
         } catch {

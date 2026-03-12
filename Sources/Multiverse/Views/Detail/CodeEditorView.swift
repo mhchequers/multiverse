@@ -6,6 +6,7 @@ struct CodeEditorView: NSViewRepresentable {
     let filename: String
     let annotations: LineAnnotations
     let onSave: () -> Void
+    var onQuickOpen: (() -> Void)? = nil
     let initialScrollOffset: CGPoint
     let onScrollOffsetChanged: (CGPoint) -> Void
 
@@ -46,6 +47,7 @@ struct CodeEditorView: NSViewRepresentable {
         textView.string = text
         textView.annotations = annotations
         textView.saveAction = onSave
+        textView.onQuickOpen = onQuickOpen
         textView.onFindBarTriggered = { [weak coordinator = context.coordinator] in
             coordinator?.attachToFindBar()
         }
@@ -128,6 +130,7 @@ struct CodeEditorView: NSViewRepresentable {
 
         textView.annotations = annotations
         textView.saveAction = onSave
+        textView.onQuickOpen = onQuickOpen
 
         if let gutterView = context.coordinator.gutterView {
             gutterView.annotations = annotations
@@ -480,6 +483,7 @@ struct CodeEditorView: NSViewRepresentable {
 class GutterTextView: NSTextView {
     var annotations = LineAnnotations()
     var saveAction: (() -> Void)?
+    var onQuickOpen: (() -> Void)?
     var onFindBarTriggered: (() -> Void)?
 
     override func insertTab(_ sender: Any?) {
@@ -510,6 +514,9 @@ class GutterTextView: NSTextView {
                 return true
             case (.command, "e"):
                 triggerFindAction(.setSearchString)
+                return true
+            case (.command, "p"):
+                onQuickOpen?()
                 return true
             default:
                 break
