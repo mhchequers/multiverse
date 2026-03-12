@@ -41,6 +41,15 @@ struct CodeEditorView: NSViewRepresentable {
         textView.maxSize = NSSize(width: largeSize, height: largeSize)
         textView.minSize = NSSize(width: 0, height: 0)
 
+        // Enable word wrapping for markdown files
+        if Self.isMarkdown(filename) {
+            textView.isHorizontallyResizable = false
+            textView.autoresizingMask = [.width, .height]
+            textView.textContainer?.widthTracksTextView = true
+            textView.textContainer?.containerSize = NSSize(width: 0, height: largeSize)
+            textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: largeSize)
+        }
+
         textView.usesFindBar = true
         textView.isIncrementalSearchingEnabled = true
         textView.delegate = context.coordinator
@@ -143,6 +152,11 @@ struct CodeEditorView: NSViewRepresentable {
         }
     }
 
+    private static func isMarkdown(_ filename: String) -> Bool {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        return ext == "md" || ext == "markdown"
+    }
+
     // MARK: - Text View Frame Management
 
     /// Manually set the text view's frame to match its content width.
@@ -155,7 +169,8 @@ struct CodeEditorView: NSViewRepresentable {
         let usedRect = layoutManager.usedRect(for: textContainer)
         let clipSize = scrollView.contentView.bounds.size
         let padding = textContainer.lineFragmentPadding * 2 + 30
-        let width = max(clipSize.width, usedRect.width + padding)
+        let isWrapping = textContainer.widthTracksTextView
+        let width = isWrapping ? clipSize.width : max(clipSize.width, usedRect.width + padding)
         let height = max(clipSize.height, usedRect.height)
         textView.setFrameSize(NSSize(width: width, height: height))
     }
