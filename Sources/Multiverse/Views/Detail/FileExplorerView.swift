@@ -89,14 +89,6 @@ struct FileExplorerView: View {
                 if vm.isLoading {
                     ProgressView()
                         .controlSize(.small)
-                } else {
-                    Button {
-                        Task { await vm.loadFileTree() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Refresh file tree")
                 }
             }
             .padding(.horizontal, 12)

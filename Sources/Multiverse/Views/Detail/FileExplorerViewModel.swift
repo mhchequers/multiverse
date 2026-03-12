@@ -21,7 +21,7 @@ struct FileNode: Identifiable, Hashable {
     }
 }
 
-struct LineAnnotations {
+struct LineAnnotations: Equatable {
     var added: Set<Int> = []
     var modified: Set<Int> = []
     var deleted: Set<Int> = []  // line numbers AFTER which deletions occurred (0 = before line 1)
@@ -289,15 +289,19 @@ final class FileExplorerViewModel {
         isLoading = true
         error = nil
         do {
-            let files = try await gitService.listFiles(in: directory)
-            cachedFilePaths = files
-            let statusMap = try await buildStatusMap()
-            rootNodes = buildTree(from: files, statusMap: statusMap, basePath: directory)
+            try await rebuildTree()
         } catch {
             self.error = error.localizedDescription
         }
         isLoading = false
         startFileWatching()
+    }
+
+    private func rebuildTree() async throws {
+        let files = try await gitService.listFiles(in: directory)
+        cachedFilePaths = files
+        let statusMap = try await buildStatusMap()
+        rootNodes = buildTree(from: files, statusMap: statusMap, basePath: directory)
     }
 
     private func startFileWatching() {
@@ -306,20 +310,65 @@ final class FileExplorerViewModel {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 guard !Task.isCancelled else { break }
-                self?.reloadExternallyChangedFiles()
+                await self?.refreshOpenFiles()
             }
         }
     }
 
-    private func reloadExternallyChangedFiles() {
+    private func refreshOpenFiles() async {
+        // 1. Check for file list changes (new/deleted files)
+        let freshFiles = (try? await gitService.listFiles(in: directory)) ?? []
+        if freshFiles != cachedFilePaths {
+            // File list changed — full tree rebuild (includes status)
+            cachedFilePaths = freshFiles
+            let statusMap = (try? await buildStatusMap()) ?? [:]
+            rootNodes = buildTree(from: freshFiles, statusMap: statusMap, basePath: directory)
+        } else {
+            // File list unchanged — lightweight status update only
+            if let statusMap = try? await buildStatusMap() {
+                rootNodes = applyStatus(statusMap, to: rootNodes)
+            }
+        }
+
+        // 2. Refresh open tab content and annotations
         for index in tabs.indices {
             let tab = tabs[index]
             guard !tab.isImage, !tab.isDirty else { continue }
+
             let fullPath = (directory as NSString).appendingPathComponent(tab.filePath)
-            guard let newContent = try? String(contentsOfFile: fullPath, encoding: .utf8) else { continue }
-            if newContent != tab.savedContent {
+
+            // Reload content if changed externally
+            if let newContent = try? String(contentsOfFile: fullPath, encoding: .utf8),
+               newContent != tab.savedContent {
                 tabs[index].tabContent = .text(content: newContent, savedContent: newContent)
             }
+
+            // Refresh diff annotations (a commit changes the diff baseline
+            // without changing file content, so always re-check)
+            if var rawDiff = try? await gitService.diff(for: tab.filePath, staged: false, in: directory) {
+                if rawDiff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    rawDiff = (try? await gitService.diff(for: tab.filePath, staged: true, in: directory)) ?? ""
+                }
+                let newAnnotations = parseAnnotations(from: rawDiff)
+                if newAnnotations != tabs[index].annotations {
+                    tabs[index].annotations = newAnnotations
+                }
+            }
+        }
+    }
+
+    private func applyStatus(_ statusMap: [String: ChangeStatus], to nodes: [FileNode]) -> [FileNode] {
+        nodes.map { node in
+            var updated = node
+            if node.isDirectory {
+                updated.gitStatus = statusMap.first(where: { $0.key.hasPrefix(node.path + "/") })?.value
+                if let children = node.children {
+                    updated.children = applyStatus(statusMap, to: children)
+                }
+            } else {
+                updated.gitStatus = statusMap[node.path]
+            }
+            return updated
         }
     }
 
