@@ -199,6 +199,7 @@ final class FileExplorerViewModel {
         return components.dropLast().joined(separator: "/")
     }
 
+    @ObservationIgnored private var fileWatchTask: Task<Void, Never>?
     @ObservationIgnored var scrollOffsets: [UUID: CGPoint] = [:]
 
     var currentScrollOffset: CGPoint {
@@ -296,6 +297,30 @@ final class FileExplorerViewModel {
             self.error = error.localizedDescription
         }
         isLoading = false
+        startFileWatching()
+    }
+
+    private func startFileWatching() {
+        fileWatchTask?.cancel()
+        fileWatchTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { break }
+                self?.reloadExternallyChangedFiles()
+            }
+        }
+    }
+
+    private func reloadExternallyChangedFiles() {
+        for index in tabs.indices {
+            let tab = tabs[index]
+            guard !tab.isImage, !tab.isDirty else { continue }
+            let fullPath = (directory as NSString).appendingPathComponent(tab.filePath)
+            guard let newContent = try? String(contentsOfFile: fullPath, encoding: .utf8) else { continue }
+            if newContent != tab.savedContent {
+                tabs[index].tabContent = .text(content: newContent, savedContent: newContent)
+            }
+        }
     }
 
     func openFileByPath(_ relativePath: String) async {

@@ -129,11 +129,11 @@ struct CodeEditorView: NSViewRepresentable {
             // Apply syntax highlighting on external text change
             SyntaxHighlighter.applyHighlighting(to: textView, filename: filename)
 
-            // Defer frame adjustment and scroll reset until after AppKit completes layout
+            // Defer frame adjustment until after AppKit completes layout.
+            // Preserve scroll position — tab switches are handled by makeNSView
+            // (via .id(selectedTabId)), so updateNSView only fires for same-tab changes.
             DispatchQueue.main.async {
                 Self.adjustTextViewFrame(textView, in: scrollView)
-                scrollView.contentView.scroll(to: .zero)
-                scrollView.reflectScrolledClipView(scrollView.contentView)
             }
         }
 
