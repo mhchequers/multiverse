@@ -421,6 +421,13 @@ final class FileExplorerViewModel {
         }
     }
 
+    func moveTab(fromId: UUID, toId: UUID) {
+        guard fromId != toId,
+              let fromIndex = tabs.firstIndex(where: { $0.id == fromId }),
+              let toIndex = tabs.firstIndex(where: { $0.id == toId }) else { return }
+        tabs.move(fromOffsets: IndexSet(integer: fromIndex), toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
+    }
+
     func selectTab(_ tabId: UUID) {
         guard tabId != selectedTabId else { return }
         saveTask?.cancel()

@@ -7,6 +7,8 @@ struct FileExplorerView: View {
     @State private var viewModel: FileExplorerViewModel?
     @State private var treeWidth: CGFloat = 0
     @State private var treeHeight: CGFloat = 0
+    @State private var draggingTabId: UUID?
+    @State private var tabFrames: [UUID: CGRect] = [:]
 
     private var workingDirectory: String? {
         if let wt = project.worktreePath, !wt.isEmpty { return wt }
@@ -270,7 +272,18 @@ struct FileExplorerView: View {
             HStack(spacing: 0) {
                 ForEach(vm.tabs) { tab in
                     tabView(tab: tab, vm: vm)
+                        .opacity(draggingTabId == tab.id ? 0.5 : 1.0)
+                        .background(GeometryReader { geo in
+                            Color.clear.preference(
+                                key: TabFramePreferenceKey.self,
+                                value: [tab.id: geo.frame(in: .named("tabBar"))]
+                            )
+                        })
                 }
+            }
+            .coordinateSpace(name: "tabBar")
+            .onPreferenceChange(TabFramePreferenceKey.self) { frames in
+                tabFrames = frames
             }
         }
         .background(.white.opacity(0.03))
@@ -316,6 +329,25 @@ struct FileExplorerView: View {
         .onTapGesture {
             vm.selectTab(tab.id)
         }
+        .gesture(
+            DragGesture(coordinateSpace: .named("tabBar"))
+                .onChanged { value in
+                    if draggingTabId == nil {
+                        draggingTabId = tab.id
+                    }
+                    for (id, frame) in tabFrames where id != tab.id {
+                        if frame.contains(value.location) {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                vm.moveTab(fromId: tab.id, toId: id)
+                            }
+                            break
+                        }
+                    }
+                }
+                .onEnded { _ in
+                    draggingTabId = nil
+                }
+        )
     }
 
     @ViewBuilder
@@ -345,6 +377,15 @@ struct FileExplorerView: View {
         case "png", "jpg", "jpeg", "gif", "svg": return "photo"
         default: return "doc"
         }
+    }
+}
+
+// MARK: - Tab Frame Preference Key
+
+private struct TabFramePreferenceKey: PreferenceKey {
+    nonisolated(unsafe) static var defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { $1 })
     }
 }
 
