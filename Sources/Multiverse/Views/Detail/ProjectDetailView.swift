@@ -19,7 +19,10 @@ private let codePlanTemplate = """
 
 
 ## Other important instructions
+- Think very hard about this
+- Do any and all research you need
 - Use subagents as you need
+- Ask me any clarifying questions
 """
 
 struct ProjectDetailView: View {
