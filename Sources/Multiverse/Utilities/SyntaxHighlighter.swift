@@ -229,7 +229,7 @@ enum SyntaxHighlighter {
         var location = 0
 
         for line in lines {
-            let lineLength = line.count
+            let lineLength = line.utf16.count
             let range = NSRange(location: location, length: lineLength)
             let sub = mutable.attributedSubstring(from: range)
             // Convert NSAttributedString → SwiftUI AttributedString
