@@ -8,6 +8,7 @@ class MonitoredTerminalView: LocalProcessTerminalView {
     var onOpenFilePath: ((String) -> Void)?
     nonisolated(unsafe) private var eventMonitor: Any?
     private var hoveredFilePath: String?
+    private var hoveredURL: URL?
     private var isCommandHeld = false
 
     // MARK: - Cell Dimensions
@@ -71,6 +72,10 @@ class MonitoredTerminalView: LocalProcessTerminalView {
                       self.window == event.window else {
                     return event
                 }
+                if let url = self.hoveredURL {
+                    NSWorkspace.shared.open(url)
+                    return nil
+                }
                 if let path = self.hoveredFilePath {
                     self.onOpenFilePath?(path)
                     return nil
@@ -96,7 +101,7 @@ class MonitoredTerminalView: LocalProcessTerminalView {
         typealias ResetBlock = @convention(block) (AnyObject) -> Void
         let resetBlock: ResetBlock = { obj in
             guard let view = obj as? MonitoredTerminalView else { return }
-            if view.isCommandHeld, view.hoveredFilePath != nil {
+            if view.isCommandHeld, (view.hoveredFilePath != nil || view.hoveredURL != nil) {
                 view.addCursorRect(view.bounds, cursor: .pointingHand)
             } else {
                 view.addCursorRect(view.bounds, cursor: .iBeam)
@@ -109,7 +114,7 @@ class MonitoredTerminalView: LocalProcessTerminalView {
         typealias CursorBlock = @convention(block) (AnyObject, NSEvent) -> Void
         let cursorBlock: CursorBlock = { obj, event in
             guard let view = obj as? MonitoredTerminalView else { return }
-            if view.isCommandHeld, view.hoveredFilePath != nil {
+            if view.isCommandHeld, (view.hoveredFilePath != nil || view.hoveredURL != nil) {
                 NSCursor.pointingHand.set()
             } else {
                 NSCursor.iBeam.set()
@@ -171,21 +176,35 @@ class MonitoredTerminalView: LocalProcessTerminalView {
         }
         let lineText = bufferLine.translateToString(trimRight: true, startCol: 0, endCol: cols)
             .replacingOccurrences(of: "\0", with: " ")
-        guard !lineText.isEmpty,
-              let path = extractFilePath(from: lineText, around: pos.col),
+        guard !lineText.isEmpty else {
+            clearHoverState()
+            return
+        }
+
+        if let url = extractURL(from: lineText, around: pos.col) {
+            hoveredURL = url
+            hoveredFilePath = nil
+            NSCursor.pointingHand.set()
+            window?.invalidateCursorRects(for: self)
+            return
+        }
+
+        guard let path = extractFilePath(from: lineText, around: pos.col),
               let resolved = resolveFilePath(path) else {
             clearHoverState()
             return
         }
 
+        hoveredURL = nil
         hoveredFilePath = resolved
         NSCursor.pointingHand.set()
         window?.invalidateCursorRects(for: self)
     }
 
     private func clearHoverState() {
-        if hoveredFilePath != nil {
+        if hoveredFilePath != nil || hoveredURL != nil {
             hoveredFilePath = nil
+            hoveredURL = nil
             NSCursor.arrow.set()
             window?.invalidateCursorRects(for: self)
         }
@@ -202,6 +221,11 @@ class MonitoredTerminalView: LocalProcessTerminalView {
         let lineText = bufferLine.translateToString(trimRight: true, startCol: 0, endCol: cols)
             .replacingOccurrences(of: "\0", with: " ")
         guard !lineText.isEmpty else { return false }
+
+        if let url = extractURL(from: lineText, around: pos.col) {
+            NSWorkspace.shared.open(url)
+            return true
+        }
 
         guard let path = extractFilePath(from: lineText, around: pos.col) else { return false }
         guard let resolved = resolveFilePath(path) else { return false }
@@ -254,6 +278,35 @@ class MonitoredTerminalView: LocalProcessTerminalView {
         guard !candidate.hasPrefix("-") else { return nil }
 
         return candidate
+    }
+
+    private func extractURL(from line: String, around col: Int) -> URL? {
+        let chars = Array(line)
+        guard col < chars.count else { return nil }
+
+        let stopChars: Set<Character> = [" ", "\t", "'", "\"", "(", ")", "[", "]", "{", "}", "<", ">", "|", ";", ","]
+
+        var left = col
+        while left > 0 {
+            let prev = chars[left - 1]
+            if stopChars.contains(prev) { break }
+            left -= 1
+        }
+
+        var right = col
+        while right < chars.count - 1 {
+            let next = chars[right + 1]
+            if stopChars.contains(next) { break }
+            right += 1
+        }
+
+        var candidate = String(chars[left...right])
+        while let last = candidate.last, ".!?:".contains(last) {
+            candidate.removeLast()
+        }
+
+        guard candidate.hasPrefix("http://") || candidate.hasPrefix("https://") else { return nil }
+        return URL(string: candidate)
     }
 
     private func resolveFilePath(_ path: String) -> String? {
