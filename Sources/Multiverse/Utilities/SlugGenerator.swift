@@ -5,7 +5,7 @@ enum SlugGenerator {
         let slug = title
             .lowercased()
             .folding(options: .diacriticInsensitive, locale: .current)
-            .replacingOccurrences(of: "[^a-z0-9\\s-]", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "[^a-z0-9\\s_-]", with: "", options: .regularExpression)
             .replacingOccurrences(of: "\\s+", with: "-", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
 
