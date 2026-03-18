@@ -34,6 +34,9 @@ struct ProjectDetailView: View {
     @State private var selectedTab: DetailTab = .description
     @State private var isEditing = false
     @FocusState private var editorFocused: Bool
+    @State private var isEditingName = false
+    @State private var isHoveringName = false
+    @FocusState private var nameFocused: Bool
     @State private var terminalHeight: CGFloat = 400
 
     private var statusColor: Color {
@@ -155,9 +158,40 @@ struct ProjectDetailView: View {
         VStack(spacing: 0) {
             // Header row
             VStack(alignment: .leading, spacing: 4) {
-                Text(project.name)
-                    .font(.title)
-                    .fontWeight(.bold)
+                HStack(spacing: 6) {
+                    if isEditingName {
+                        TextField("Project Name", text: $project.name)
+                            .font(.title)
+                            .fontWeight(.bold)
+                            .textFieldStyle(.plain)
+                            .focused($nameFocused)
+                            .onSubmit {
+                                isEditingName = false
+                                try? modelContext.save()
+                            }
+                            .onChange(of: nameFocused) { _, focused in
+                                if !focused {
+                                    isEditingName = false
+                                    try? modelContext.save()
+                                }
+                            }
+                    } else {
+                        Text(project.name)
+                            .font(.title)
+                            .fontWeight(.bold)
+                        Button {
+                            isEditingName = true
+                            nameFocused = true
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.primary)
+                        }
+                        .buttonStyle(.borderless)
+                        .opacity(isHoveringName ? 1 : 0)
+                    }
+                }
+                .onHover { isHoveringName = $0 }
 
                 HStack {
                     Menu {
