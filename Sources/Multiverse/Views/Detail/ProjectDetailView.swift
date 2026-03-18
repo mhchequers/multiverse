@@ -139,7 +139,7 @@ struct ProjectDetailView: View {
         logActivity(.codePlanExecuted, for: project, in: modelContext)
 
         let escaped = project.codePlan.replacingOccurrences(of: "'", with: "'\\''")
-        let command = "claude '\(escaped)' --model opus --permission-mode plan --allowed-tools 'Read,Glob,Grep,WebSearch,WebFetch,Task,Bash(git:*)'"
+        let command = "claude '\(escaped)' --model 'opus[1m]' --effort max --permission-mode plan --allowed-tools 'Read,Glob,Grep,WebSearch,WebFetch,Task,Bash(git:*)'"
 
         NotificationCenter.default.post(
             name: .launchClaude,
