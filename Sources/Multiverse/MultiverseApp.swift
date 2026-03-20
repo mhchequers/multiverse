@@ -5,6 +5,24 @@ import AppKit
 @main
 struct MultiverseApp: App {
     @State private var appState = AppState()
+    let modelContainer: ModelContainer
+
+    init() {
+        self.modelContainer = Self.makeModelContainer()
+    }
+
+    static func makeModelContainer() -> ModelContainer {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let multiverseDir = appSupport.appending(path: "Multiverse")
+        try? FileManager.default.createDirectory(at: multiverseDir, withIntermediateDirectories: true)
+
+        let config = ModelConfiguration(url: multiverseDir.appending(path: "Multiverse.store"))
+        do {
+            return try ModelContainer(for: Project.self, ProjectActivity.self, configurations: config)
+        } catch {
+            fatalError("Failed to create model container: \(error)")
+        }
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -41,10 +59,7 @@ struct MultiverseApp: App {
                     appState.terminateAllProcesses()
                 }
         }
-        .modelContainer(for: [
-            Project.self,
-            ProjectActivity.self,
-        ])
+        .modelContainer(modelContainer)
         .defaultSize(width: 1600, height: 975)
         .commands {
             CommandGroup(replacing: .newItem) {
