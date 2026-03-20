@@ -16,7 +16,22 @@ struct MultiverseApp: App {
         let multiverseDir = appSupport.appending(path: "Multiverse")
         try? FileManager.default.createDirectory(at: multiverseDir, withIntermediateDirectories: true)
 
-        let config = ModelConfiguration(url: multiverseDir.appending(path: "Multiverse.store"))
+        // Back up the database before opening — if the store is ever corrupted,
+        // manually replace Multiverse.store with Multiverse.store.backup
+        let storeName = "Multiverse.store"
+        let storeURL = multiverseDir.appending(path: storeName)
+        if FileManager.default.fileExists(atPath: storeURL.path) {
+            for suffix in ["", "-shm", "-wal"] {
+                let src = multiverseDir.appending(path: "\(storeName)\(suffix)")
+                let dst = multiverseDir.appending(path: "\(storeName)\(suffix).backup")
+                if FileManager.default.fileExists(atPath: src.path) {
+                    try? FileManager.default.removeItem(at: dst)
+                    try? FileManager.default.copyItem(at: src, to: dst)
+                }
+            }
+        }
+
+        let config = ModelConfiguration(url: storeURL)
         do {
             return try ModelContainer(for: Project.self, ProjectActivity.self, configurations: config)
         } catch {
