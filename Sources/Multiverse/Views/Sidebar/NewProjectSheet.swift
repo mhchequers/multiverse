@@ -59,7 +59,6 @@ struct NewProjectSheet: View {
                         panel.canChooseFiles = false
                         panel.allowsMultipleSelection = false
                         panel.message = "Select a git repository"
-                        panel.directoryURL = URL(fileURLWithPath: "/Users/mattchequers/repos")
                         if panel.runModal() == .OK, let url = panel.url {
                             repoPath = url.path
                             loadBranches()
