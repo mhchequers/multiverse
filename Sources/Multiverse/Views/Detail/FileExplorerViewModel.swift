@@ -472,9 +472,10 @@ final class FileExplorerViewModel {
             let savedPath = tab.filePath
             let tabId = tab.id
             Task {
-                var rawDiff = try await gitService.diff(for: savedPath, staged: false, in: directory)
+                // On failure, keep the existing markers; the 2s poll will refresh them.
+                guard var rawDiff = try? await gitService.diff(for: savedPath, staged: false, in: directory) else { return }
                 if rawDiff.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    rawDiff = try await gitService.diff(for: savedPath, staged: true, in: directory)
+                    rawDiff = (try? await gitService.diff(for: savedPath, staged: true, in: directory)) ?? ""
                 }
                 if let idx = tabs.firstIndex(where: { $0.id == tabId }) {
                     tabs[idx].annotations = parseAnnotations(from: rawDiff)

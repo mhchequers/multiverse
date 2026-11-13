@@ -96,14 +96,6 @@ struct ProjectDetailView: View {
             bar.foregroundColor = .secondary
             attributed = bar + attributed
             attributed.foregroundColor = .secondary
-            var container = AttributeContainer()
-            container.paragraphStyle = {
-                let style = NSMutableParagraphStyle()
-                style.headIndent = 16
-                style.firstLineHeadIndent = 8
-                return style
-            }()
-            attributed.mergeAttributes(container)
         } else if let bulletMatch = line.range(of: #"^(\s*)[*\-] "#, options: .regularExpression) {
             let leadingSpaces = line.prefix(while: { $0 == " " || $0 == "\t" })
             let nestLevel = leadingSpaces.count / 2
