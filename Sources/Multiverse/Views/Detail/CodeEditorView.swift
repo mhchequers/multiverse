@@ -175,7 +175,7 @@ struct CodeEditorView: NSViewRepresentable {
         textView.setFrameSize(NSSize(width: width, height: height))
     }
 
-    class Coordinator: NSObject, NSTextViewDelegate {
+    @MainActor class Coordinator: NSObject, NSTextViewDelegate {
         var textBinding: Binding<String>
         var filename: String = ""
         var textView: GutterTextView?
@@ -200,7 +200,7 @@ struct CodeEditorView: NSViewRepresentable {
             self.textBinding = textBinding
         }
 
-        deinit {
+        isolated deinit {
             if let observer = findSearchFieldObserver {
                 NotificationCenter.default.removeObserver(observer)
             }

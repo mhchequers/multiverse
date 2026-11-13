@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 enum DetailTab: String, CaseIterable {

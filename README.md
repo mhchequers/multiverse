@@ -9,7 +9,7 @@ Named for the multiverse theory in theoretical physics, it suggests productivity
 ## Prerequisites
 
 - macOS 15+ (Sequoia)
-- Xcode 16+ - required for Swift 6.0 toolchain (or just the Swift 6.0 command-line tools)
+- Xcode 16+ (the full app, not just the command-line tools) - SwiftData's macros only ship with Xcode. After installing, run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` and `sudo xcodebuild -license accept`.
 - Git - the app shells out to /usr/bin/git for all git operations (status, diff, worktrees,     
   commit detection, etc.) 
 - Claude CLI - `claude` must be in your `PATH`
