@@ -8,7 +8,7 @@ let package = Package(
         .macOS(.v15)
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.2.0"),
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm.git", from: "1.99.3"),
         .package(url: "https://github.com/smittytone/HighlighterSwift.git", from: "3.0.0"),
     ],
     targets: [

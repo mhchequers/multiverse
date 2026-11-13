@@ -2,7 +2,6 @@ import AppKit
 import SwiftTerm
 
 class MonitoredTerminalView: LocalProcessTerminalView {
-    private(set) var lastOutputTime: Date?
     private(set) var isProcessRunning = true
     var workingDirectory: String?
     var onOpenFilePath: ((String) -> Void)?
@@ -14,9 +13,9 @@ class MonitoredTerminalView: LocalProcessTerminalView {
     // MARK: - Cell Dimensions
 
     private func cellDimensions() -> (width: CGFloat, height: CGFloat)? {
-        let terminal = getTerminal()
-        let rows = terminal.rows
-        let cols = terminal.cols
+        let dims = terminalDimensions
+        let rows = dims.rows
+        let cols = dims.cols
         guard rows > 0, cols > 0 else { return nil }
         let optimal = getOptimalFrameSize()
         let cellHeight = optimal.height / CGFloat(rows)
@@ -27,9 +26,9 @@ class MonitoredTerminalView: LocalProcessTerminalView {
     }
 
     private func terminalPosition(for locationInWindow: NSPoint) -> (row: Int, col: Int)? {
-        let terminal = getTerminal()
-        let rows = terminal.rows
-        let cols = terminal.cols
+        let dims = terminalDimensions
+        let rows = dims.rows
+        let cols = dims.cols
         guard let cell = cellDimensions() else {
             return nil
         }
@@ -41,6 +40,11 @@ class MonitoredTerminalView: LocalProcessTerminalView {
 
         guard row >= 0, row < rows, col >= 0, col < cols else { return nil }
         return (row, col)
+    }
+
+    /// Text of one row of the visible screen (row 0 = top of the viewport).
+    private func visibleRowText(_ row: Int) -> String? {
+        visibleRowsText(row..<(row + 1)).first
     }
 
     // MARK: - Event Monitor
@@ -168,15 +172,7 @@ class MonitoredTerminalView: LocalProcessTerminalView {
             return
         }
 
-        let terminal = getTerminal()
-        let cols = terminal.cols
-        guard let bufferLine = terminal.getLine(row: pos.row) else {
-            clearHoverState()
-            return
-        }
-        let lineText = bufferLine.translateToString(trimRight: true, startCol: 0, endCol: cols)
-            .replacingOccurrences(of: "\0", with: " ")
-        guard !lineText.isEmpty else {
+        guard let lineText = visibleRowText(pos.row), !lineText.isEmpty else {
             clearHoverState()
             return
         }
@@ -215,12 +211,7 @@ class MonitoredTerminalView: LocalProcessTerminalView {
     private func tryOpenFilePath(from event: NSEvent) -> Bool {
         guard let pos = terminalPosition(for: event.locationInWindow) else { return false }
 
-        let terminal = getTerminal()
-        let cols = terminal.cols
-        guard let bufferLine = terminal.getLine(row: pos.row) else { return false }
-        let lineText = bufferLine.translateToString(trimRight: true, startCol: 0, endCol: cols)
-            .replacingOccurrences(of: "\0", with: " ")
-        guard !lineText.isEmpty else { return false }
+        guard let lineText = visibleRowText(pos.row), !lineText.isEmpty else { return false }
 
         if let url = extractURL(from: lineText, around: pos.col) {
             NSWorkspace.shared.open(url)
@@ -337,13 +328,6 @@ class MonitoredTerminalView: LocalProcessTerminalView {
         }
 
         return nil
-    }
-
-    override func dataReceived(slice: ArraySlice<UInt8>) {
-        super.dataReceived(slice: slice)
-        DispatchQueue.main.async {
-            self.lastOutputTime = Date()
-        }
     }
 
     override func processTerminated(_ source: LocalProcess, exitCode: Int32?) {

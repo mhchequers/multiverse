@@ -3,7 +3,7 @@ import SwiftTerm
 
 /// Terminal.app-inspired ANSI palette with a brighter "bright black" (index 8)
 /// so dim text is readable against our dark background.
-nonisolated(unsafe) private let terminalPalette: [SwiftTerm.Color] = {
+private let terminalPalette: [SwiftTerm.Color] = {
     func c(_ r: UInt16, _ g: UInt16, _ b: UInt16) -> SwiftTerm.Color {
         SwiftTerm.Color(red: r * 257, green: g * 257, blue: b * 257)
     }
@@ -54,7 +54,7 @@ struct TerminalRepresentable: NSViewRepresentable {
         terminal.nativeForegroundColor = .white
         terminal.nativeBackgroundColor = NSColor(red: 0.04, green: 0.04, blue: 0.05, alpha: 1.0)
         terminal.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        terminal.getTerminal().changeHistorySize(5_000)
+        terminal.changeScrollback(5_000)
 
         // Custom palette with brighter "bright black" (index 8) for visibility on dark bg
         terminal.installColors(terminalPalette)
